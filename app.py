@@ -7,6 +7,8 @@ import streamlit as st
 from crewai import Agent, Task, Crew, Process, LLM, tools
 from duckduckgo_search import DDGS
 import time
+from crewai_tools import Tool  # add this import at the top of your file
+
 
 # =====================================================================
 # ⚙️ APP CONFIGURATION
@@ -123,7 +125,7 @@ def duckduckgo_search(query: str, max_results: int = 5):
     except Exception as e:
         return f"Error performing search: {str(e)}"
 
-duckduckgo_tool = tools.FunctionTool(
+duckduckgo_tool = Tool(
     name="DuckDuckGo Web Search",
     func=duckduckgo_search,
     description="Search the web using DuckDuckGo and return top results."
