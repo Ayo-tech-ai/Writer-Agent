@@ -1,13 +1,13 @@
 # =====================================================================
-# 🚀 STREAMLIT AGENTIC RESEARCH APP (GROQ + DUCKDUCKGO + CREWAI)
+# 🚀 STREAMLIT AGENTIC RESEARCH APP (GROQ + MULTI-SEARCH + CREWAI)
 # =====================================================================
 
 import os
 import streamlit as st
-from duckduckgo_search import DDGS
 import requests
 import json
 import time
+from datetime import datetime
 
 # =====================================================================
 # ⚙️ APP CONFIGURATION
@@ -23,7 +23,7 @@ st.set_page_config(
 st.title("🌍 Groq-Powered Agentic Researcher")
 st.markdown(
     """
-    🤖 **Powered by Groq + DuckDuckGo Search**  
+    🤖 **Powered by Groq + Multiple Search Methods**  
     _Perform intelligent web research and receive concise summaries._
     """
 )
@@ -42,7 +42,14 @@ with st.sidebar:
         placeholder="gsk_... or leave blank to use GROQ_API_KEY env var"
     )
     
-    # Model selection - Updated for latest Groq models
+    # Optional: Serper API key for enhanced search
+    serper_api_key = st.text_input(
+        "Optional: Serper API Key (for better search)",
+        type="password",
+        placeholder="Leave blank for free search methods"
+    )
+    
+    # Model selection
     model_options = {
         "Llama 3.3 70B Versatile": "llama-3.3-70b-versatile",
         "Llama 3.1 8B Instant": "llama-3.1-8b-instant", 
@@ -63,61 +70,126 @@ with st.sidebar:
     with col2:
         max_results = st.slider("Max Results", 1, 10, 5)
     
-    st.markdown("---")
-    st.info("💡 This app uses **DuckDuckGo Search** — no API key required!")
+    # Search method selection
+    search_method = st.radio(
+        "Search Method:",
+        ["Auto (Try Multiple)", "DuckDuckGo", "Serper API", "AI Knowledge Only"],
+        index=0
+    )
     
-    # Additional info
-    with st.expander("ℹ️ How to use"):
-        st.markdown("""
-        1. Enter your Groq API key (or set GROQ_API_KEY environment variable)
-        2. Type your research topic
-        3. Click 'Run Research'
-        4. Wait for the agents to complete their work
-        
-        **Workflow:**
-        - 🔍 **Research**: Searches the web for information
-        - ✍️ **Writing**: Summarizes findings into a coherent report
-        """)
+    st.markdown("---")
+    st.info("💡 **Free tier available for all methods!**")
 
 # =====================================================================
-# 🌐 IMPROVED DUCKDUCKGO SEARCH TOOL
+# 🔍 MULTI-SEARCH ENGINE IMPLEMENTATION
 # =====================================================================
+
+def serper_search(query: str, max_results: int = 5, api_key: str = None) -> str:
+    """Search using Serper API (more reliable)"""
+    if not api_key:
+        return "Serper API key not provided"
+    
+    try:
+        url = "https://google.serper.dev/search"
+        payload = json.dumps({"q": query, "num": max_results})
+        headers = {
+            'X-API-KEY': api_key,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, data=payload, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        results = []
+        
+        # Process organic results
+        if 'organic' in data:
+            for i, result in enumerate(data['organic'][:max_results], 1):
+                title = result.get('title', 'No title')
+                link = result.get('link', 'No URL')
+                snippet = result.get('snippet', 'No description')
+                results.append(f"### 📄 Result {i}: {title}\n**URL:** {link}\n**Summary:** {snippet}\n")
+        
+        if results:
+            st.success(f"✅ Serper found {len(results)} results")
+            return "\n\n".join(results)
+        else:
+            return "No results found via Serper"
+            
+    except Exception as e:
+        return f"Serper search error: {str(e)}"
 
 def duckduckgo_search(query: str, max_results: int = 5) -> str:
-    """Search the web using DuckDuckGo and return top results."""
+    """Search using DuckDuckGo with enhanced error handling"""
     try:
-        st.write(f"🔍 Searching for: '{query}'")
+        # Try to import and use DuckDuckGo
+        from duckduckgo_search import DDGS
         
         results = []
         with DDGS() as ddg:
-            # Add timeout and better error handling
-            search_results = list(ddg.text(query, max_results=max_results, region='us-en', safesearch='moderate'))
-            
-            if not search_results:
-                st.warning("⚠️ No search results found. Trying with different parameters...")
-                # Try alternative search
-                search_results = list(ddg.text(query, max_results=max_results))
+            search_results = list(ddg.text(
+                query, 
+                max_results=max_results,
+                region='wt-wt',
+                safesearch='moderate',
+                timelimit='y'
+            ))
             
             for i, result in enumerate(search_results, 1):
                 title = result.get("title", "No title")
                 href = result.get("href", "No URL")
                 body = result.get("body", "No description")
-                
-                st.write(f"📄 Result {i}: {title[:80]}...")
                 results.append(f"### 📄 Result {i}: {title}\n**URL:** {href}\n**Summary:** {body}\n")
         
-        if not results:
-            error_msg = f"No results found for '{query}'. The search might be rate-limited or the query might be too specific."
-            st.error(f"❌ {error_msg}")
-            return error_msg
-            
-        st.success(f"✅ Found {len(results)} search results")
-        return "\n\n".join(results)
+        if results:
+            st.success(f"✅ DuckDuckGo found {len(results)} results")
+            return "\n\n".join(results)
+        else:
+            return "No results found via DuckDuckGo"
     
     except Exception as e:
-        error_msg = f"Search error: {str(e)}. This might be due to rate limiting or network issues."
-        st.error(f"❌ {error_msg}")
-        return error_msg
+        return f"DuckDuckGo search error: {str(e)}"
+
+def brave_search(query: str, max_results: int = 5) -> str:
+    """Alternative search method using Brave Search (free tier available)"""
+    try:
+        # This is a placeholder - you would need to sign up for Brave Search API
+        # For now, we'll simulate this or use another method
+        return "Brave Search requires API key setup"
+    except Exception as e:
+        return f"Brave search error: {str(e)}"
+
+def perform_web_search(query: str, max_results: int = 5, method: str = "auto", serper_key: str = None) -> str:
+    """Main search function that tries multiple methods"""
+    
+    st.write(f"🔍 Searching for: '{query}'")
+    
+    if method == "ai knowledge only":
+        return "search_unavailable"
+    
+    search_attempts = []
+    
+    # Try Serper first if API key is available
+    if serper_key and method in ["auto", "Serper API"]:
+        st.write("🔄 Trying Serper API...")
+        result = serper_search(query, max_results, serper_key)
+        if "found" in result.lower() and "no results" not in result.lower():
+            return result
+        search_attempts.append(f"Serper: {result}")
+    
+    # Try DuckDuckGo
+    if method in ["auto", "DuckDuckGo"]:
+        st.write("🔄 Trying DuckDuckGo...")
+        result = duckduckgo_search(query, max_results)
+        if "found" in result.lower() and "no results" not in result.lower():
+            return result
+        search_attempts.append(f"DuckDuckGo: {result}")
+    
+    # If all methods fail
+    error_msg = f"All search methods failed. Attempts:\n" + "\n".join(search_attempts)
+    st.error("❌ " + error_msg)
+    return "search_unavailable"
 
 # =====================================================================
 # 🧠 GROQ LLM INTEGRATION
@@ -165,9 +237,6 @@ class GroqLLM:
             if hasattr(e, 'response') and e.response is not None:
                 st.error(f"Response: {e.response.text}")
             return None
-        except KeyError as e:
-            st.error(f"❌ Unexpected API response format: {str(e)}")
-            return None
         except Exception as e:
             st.error(f"❌ Unexpected error: {str(e)}")
             return None
@@ -176,92 +245,113 @@ class GroqLLM:
 # 🎯 RESEARCH WORKFLOW
 # =====================================================================
 
-def execute_research_workflow(query, groq_llm, max_results):
+def execute_research_workflow(query, groq_llm, max_results, search_method, serper_key):
     """Execute the complete research workflow"""
     
-    # Step 1: Perform web search with progress indication
+    # Step 1: Perform web search
     with st.status("🔍 Searching the web...", expanded=True) as status:
-        search_results = duckduckgo_search(query, max_results)
-        status.update(label="✅ Web search completed", state="complete")
+        search_results = perform_web_search(query, max_results, search_method, serper_key)
+        status.update(label="✅ Search completed", state="complete")
     
-    # Check if search actually returned useful results
-    if "No results found" in search_results or "Search error" in search_results:
-        st.warning("🔄 Falling back to AI knowledge base (search unavailable)...")
+    # Step 2: Generate research report
+    with st.status("📊 Generating research report...", expanded=True) as status:
+        if search_results == "search_unavailable":
+            # Use AI's internal knowledge with enhanced prompt
+            st.info("🧠 Using AI knowledge base with enhanced research...")
+            research_prompt = f"""
+            Create a comprehensive research report about: "{query}"
+            
+            Current Date: {datetime.now().strftime('%Y-%m-%d')}
+            
+            Please provide a detailed analysis including:
+            
+            ## Executive Summary
+            - Key overview and importance
+            
+            ## Current Trends and Developments (2023-2024)
+            - Latest advancements and innovations
+            - Market trends and adoption rates
+            - Key players and organizations
+            
+            ## Applications and Use Cases
+            - Practical implementations
+            - Industry-specific applications
+            - Real-world examples
+            
+            ## Challenges and Opportunities
+            - Current limitations and barriers
+            - Future growth potential
+            - Emerging opportunities
+            
+            ## Future Outlook
+            - Predictions and forecasts
+            - Potential impact
+            - Recommended areas for further research
+            
+            Format this as a professional research report with clear sections and bullet points.
+            Focus on providing actionable insights and comprehensive coverage.
+            """
+            
+            system_msg = """You are a senior research analyst at a top consulting firm. 
+            Create comprehensive, well-structured research reports that are data-driven and insightful. 
+            Even without web access, draw upon your extensive training data to provide valuable analysis."""
+            
+        else:
+            # Use actual search results
+            research_prompt = f"""
+            Analyze the following web search results and create a comprehensive research report about: "{query}"
+            
+            SEARCH RESULTS:
+            {search_results}
+            
+            Current Date: {datetime.now().strftime('%Y-%m-%d')}
+            
+            Please create a structured research report that:
+            1. Synthesizes information from the search results
+            2. Identifies key trends and patterns
+            3. Highlights credible sources and data points
+            4. Provides balanced analysis of different perspectives
+            5. Includes specific examples and statistics where available
+            
+            Format as a professional report with clear sections and evidence-based insights.
+            """
+            
+            system_msg = "You are a senior research analyst. Synthesize search results into comprehensive, well-structured reports with credible insights."
         
-        # Use AI's internal knowledge as fallback
-        fallback_prompt = f"""
-        Based on your training data and knowledge, provide a comprehensive overview of: "{query}"
-        
-        Please include:
-        - Key concepts and definitions
-        - Current trends and developments
-        - Important applications or use cases
-        - Future outlook or predictions
-        
-        Format your response as a well-structured report with clear sections.
-        """
-        
-        final_summary = groq_llm.call(
-            fallback_prompt,
-            system_message="You are a knowledgeable research assistant. Provide comprehensive, well-structured information based on your training data when web search is unavailable."
-        )
-        
-        return final_summary if final_summary else "❌ Unable to generate research summary."
+        research_report = groq_llm.call(research_prompt, system_msg)
+        status.update(label="✅ Research report completed", state="complete")
     
-    # Step 2: Research analysis
-    with st.status("📊 Analyzing search results...", expanded=True) as status:
-        research_prompt = f"""
-        Analyze the following web search results and extract the most important information about: "{query}"
-        
-        SEARCH RESULTS:
-        {search_results}
-        
-        Please provide a comprehensive analysis that:
-        1. Identifies key facts and insights from the search results
-        2. Highlights the most relevant and recent information
-        3. Organizes findings by importance and relevance
-        4. Notes the credibility of sources where possible
-        5. Extracts specific data, statistics, and trends
-        
-        Format your response as a detailed research report with clear sections and bullet points for key findings.
-        """
-        
-        research_analysis = groq_llm.call(
-            research_prompt,
-            system_message="You are a senior research analyst. Your goal is to extract and organize the most valuable information from web search results. Be thorough, objective, and focus on factual accuracy."
-        )
-        status.update(label="✅ Analysis completed", state="complete")
+    if not research_report:
+        return "❌ Research failed. Please check your API key and try again."
     
-    if not research_analysis:
-        return "❌ Research analysis failed. Please check your API key and try again."
-    
-    # Step 3: Create final summary
-    with st.status("✍️ Writing final summary...", expanded=True) as status:
+    # Step 3: Create executive summary
+    with st.status("✍️ Creating executive summary...", expanded=True) as status:
         summary_prompt = f"""
-        Based on the following research analysis, create a polished, engaging summary about: "{query}"
+        Based on the following research report, create a concise executive summary:
         
-        RESEARCH ANALYSIS:
-        {research_analysis}
+        RESEARCH REPORT:
+        {research_report}
         
-        Please create a well-structured summary that:
-        - Starts with an engaging introduction
-        - Presents key findings in a logical flow
-        - Uses clear, concise language that's easy to understand
-        - Highlights the most important insights and trends
-        - Includes specific examples or statistics where available
-        - Ends with meaningful conclusions or takeaways
-        - Is suitable for a general audience
+        Create a 2-3 paragraph executive summary that:
+        - Highlights the most important findings
+        - Presents key insights in a business-friendly format
+        - Includes actionable recommendations
+        - Is suitable for busy executives
         
-        Format: 3-4 paragraphs with clear structure, engaging tone, and markdown formatting for readability.
+        Keep it concise, impactful, and easy to understand.
         """
         
-        final_summary = groq_llm.call(
+        executive_summary = groq_llm.call(
             summary_prompt,
-            system_message="You are a professional technical writer. You excel at transforming complex information into clear, engaging, and well-structured summaries that are accessible to everyone."
+            "You are an expert business communicator. Create clear, concise executive summaries that highlight key insights and recommendations."
         )
-        status.update(label="✅ Summary completed", state="complete")
+        status.update(label="✅ Executive summary completed", state="complete")
     
-    return final_summary if final_summary else "❌ Summary writing failed. Please try again."
+    return {
+        "research_report": research_report,
+        "executive_summary": executive_summary,
+        "search_used": search_results != "search_unavailable"
+    }
 
 # =====================================================================
 # ⚙️ MAIN EXECUTION
@@ -273,21 +363,22 @@ def main():
     # User input
     query = st.text_area(
         "🔎 Enter your research topic:", 
-        placeholder="e.g. Machine learning in finance 2024, Latest developments in renewable energy, Impact of AI on healthcare...",
+        placeholder="e.g. Machine learning in Agriculture 2024, Renewable energy trends, AI in healthcare applications...",
         height=100
     )
     
-    # Get API key
-    final_api_key = groq_api_key.strip() if groq_api_key and groq_api_key.strip() else os.getenv("GROQ_API_KEY")
+    # Get API keys
+    final_groq_key = groq_api_key.strip() if groq_api_key and groq_api_key.strip() else os.getenv("GROQ_API_KEY")
+    final_serper_key = serper_api_key.strip() if serper_api_key and serper_api_key.strip() else os.getenv("SERPER_API_KEY")
     
-    if not final_api_key:
+    if not final_groq_key:
         st.error("❌ No Groq API key provided. Please enter your API key or set GROQ_API_KEY environment variable.")
         st.info("💡 Get your free API key from: https://console.groq.com")
         return
     
     # Initialize Groq LLM
     groq_llm = GroqLLM(
-        api_key=final_api_key,
+        api_key=final_groq_key,
         model=model_options[selected_model],
         temperature=temperature
     )
@@ -301,51 +392,72 @@ def main():
             else:
                 try:
                     # Execute research workflow
-                    result = execute_research_workflow(query, groq_llm, max_results)
+                    result = execute_research_workflow(
+                        query, groq_llm, max_results, search_method.lower(), final_serper_key
+                    )
                     
-                    # Display results
-                    st.success("✅ Research complete!")
-                    
-                    # Results in expandable sections
-                    with st.expander("📋 Research Report", expanded=True):
-                        if result.startswith("❌") or "failed" in result.lower():
-                            st.error(result)
-                        else:
-                            st.markdown(result)
-                    
-                    # Show research details
-                    with st.expander("🔧 Research Details"):
-                        st.write(f"**Model:** {selected_model}")
-                        st.write(f"**Temperature:** {temperature}")
-                        st.write(f"**Max Results:** {max_results}")
-                        st.write(f"**Query:** {query}")
+                    if isinstance(result, str) and result.startswith("❌"):
+                        st.error(result)
+                    else:
+                        st.success("✅ Research complete!")
+                        
+                        # Display results
+                        with st.expander("📋 Executive Summary", expanded=True):
+                            st.markdown(result["executive_summary"])
+                        
+                        with st.expander("📊 Full Research Report", expanded=False):
+                            st.markdown(result["research_report"])
+                        
+                        with st.expander("🔧 Research Details", expanded=False):
+                            st.write(f"**Model:** {selected_model}")
+                            st.write(f"**Temperature:** {temperature}")
+                            st.write(f"**Max Results:** {max_results}")
+                            st.write(f"**Search Method:** {search_method}")
+                            st.write(f"**Web Search Used:** {result['search_used']}")
+                            st.write(f"**Query:** {query}")
                         
                 except Exception as e:
                     st.error(f"❌ Error during research: {str(e)}")
 
-    # Display usage tips
-    with st.expander("💡 Tips for better results"):
+    # API Key Help Section
+    with st.expander("🔑 Get API Keys (Free Tiers Available)"):
         st.markdown("""
-        - **Be specific** in your research topic for more relevant results
-        - **Use current topics** for better search results
-        - **Adjust temperature**: Lower (0.1-0.3) for factual topics, higher (0.7-1.0) for creative topics
-        - **Use more results** for comprehensive research on complex topics
-        - **Try different models** if you're not satisfied with the results
+        **🌐 For Better Search Results:**
+        
+        **1. Serper API (Recommended)**
+        - Visit: https://serper.dev/
+        - Free tier: 2,500 searches/month
+        - More reliable than DuckDuckGo
+        - Easy setup
+        
+        **2. Groq API (Required)**
+        - Visit: https://console.groq.com/
+        - Free tier: Generous limits
+        - Fast inference speeds
+        
+        **Setup:**
+        - Get your free API keys
+        - Enter Groq API key in sidebar
+        - Optional: Enter Serper API key for better search
         """)
 
-    # Troubleshooting section
-    with st.expander("🔧 Troubleshooting"):
+    # Troubleshooting Section
+    with st.expander("🔧 Search Troubleshooting"):
         st.markdown("""
         **If search isn't working:**
-        - The app will automatically fall back to AI knowledge base
-        - DuckDuckGo might be rate-limited - try again in a few minutes
-        - Check your internet connection
-        - Try a different search query
         
-        **Common issues:**
-        - ❌ No search results: Usually temporary, try again later
-        - 🔄 Using AI knowledge base: Search is unavailable, but AI will still help
-        - ⏳ Slow responses: Groq API might be busy
+        ✅ **Quick Fixes:**
+        - Try **"AI Knowledge Only"** mode in sidebar
+        - Get a **free Serper API key** (more reliable)
+        - Use more **specific search terms**
+        - Try again in **5-10 minutes** (rate limits reset)
+        
+        🔄 **Search Methods Available:**
+        1. **Serper API** (Most reliable - needs free API key)
+        2. **DuckDuckGo** (Free but often rate-limited)
+        3. **AI Knowledge** (Always works - uses model's training data)
+        
+        💡 **Pro Tip:** Get a free Serper API key for the best experience!
         """)
 
 # =====================================================================
@@ -353,8 +465,8 @@ def main():
 # =====================================================================
 
 st.markdown("---")
-st.caption("Built with ❤️ using Groq + DuckDuckGo Search | " +
-          "Note: Research quality depends on search results and model capabilities")
+st.caption("Built with ❤️ using Groq + Multiple Search Methods | " +
+          "Free tiers available for all services")
 
 if __name__ == "__main__":
     main()
