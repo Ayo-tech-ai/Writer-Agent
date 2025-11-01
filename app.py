@@ -4,8 +4,6 @@
 
 import os
 import streamlit as st
-from crewai.tools import tool
-from crewai import Agent, Task, Crew, Process
 from duckduckgo_search import DDGS
 import requests
 import json
@@ -24,7 +22,7 @@ st.set_page_config(
 st.title("🌍 Groq-Powered Agentic Researcher")
 st.markdown(
     """
-    🤖 **Powered by Groq + CrewAI + DuckDuckGo Search**  
+    🤖 **Powered by Groq + DuckDuckGo Search**  
     _Perform intelligent web research and receive concise summaries._
     """
 )
@@ -75,17 +73,16 @@ with st.sidebar:
         3. Click 'Run Research'
         4. Wait for the agents to complete their work
         
-        **Agents:**
-        - 🔍 **Researcher**: Searches the web for information
-        - ✍️ **Writer**: Summarizes findings into a coherent report
+        **Workflow:**
+        - 🔍 **Research**: Searches the web for information
+        - ✍️ **Writing**: Summarizes findings into a coherent report
         """)
 
 # =====================================================================
 # 🌐 DUCKDUCKGO SEARCH TOOL
 # =====================================================================
 
-@tool
-def duckduckgo_search_tool(query: str, max_results: int = 5) -> str:
+def duckduckgo_search(query: str, max_results: int = 5) -> str:
     """Search the web using DuckDuckGo and return top results."""
     try:
         results = []
@@ -105,11 +102,11 @@ def duckduckgo_search_tool(query: str, max_results: int = 5) -> str:
         return f"Error performing search: {str(e)}"
 
 # =====================================================================
-# 🧠 CUSTOM GROQ LLM INTEGRATION
+# 🧠 GROQ LLM INTEGRATION
 # =====================================================================
 
 class GroqLLM:
-    """Custom Groq LLM wrapper for CrewAI"""
+    """Custom Groq LLM wrapper"""
     
     def __init__(self, api_key, model, temperature=0.7):
         self.api_key = api_key
@@ -117,12 +114,17 @@ class GroqLLM:
         self.temperature = temperature
         self.base_url = "https://api.groq.com/openai/v1/chat/completions"
         
-    def call(self, messages, **kwargs):
+    def call(self, prompt, system_message=None):
         """Make API call to Groq"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": prompt})
         
         payload = {
             "model": self.model,
@@ -142,106 +144,81 @@ class GroqLLM:
             
         except requests.exceptions.RequestException as e:
             st.error(f"❌ API Request failed: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                st.error(f"Response: {e.response.text}")
             return None
         except KeyError as e:
             st.error(f"❌ Unexpected API response format: {str(e)}")
             return None
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {str(e)}")
+            return None
 
 # =====================================================================
-# 👥 DEFINE AGENTS (UPDATED FOR CUSTOM GROQ INTEGRATION)
+# 🎯 RESEARCH WORKFLOW
 # =====================================================================
 
-def create_agents(groq_llm, search_tool):
-    """Create research and writer agents with custom Groq LLM."""
+def execute_research_workflow(query, groq_llm, max_results):
+    """Execute the complete research workflow"""
     
-    # Custom agent class to work with our Groq LLM
-    class GroqAgent:
-        def __init__(self, role, goal, backstory, tools=None):
-            self.role = role
-            self.goal = goal
-            self.backstory = backstory
-            self.tools = tools or []
-            self.llm = groq_llm
-            
-        def execute_task(self, task_description):
-            """Execute a task using the Groq LLM"""
-            messages = [
-                {"role": "system", "content": f"""You are a {self.role}. {self.backstory}
-                 
-                 Your goal: {self.goal}
-                 
-                 Available tools: {[tool.__name__ for tool in self.tools] if self.tools else 'None'}
-                 
-                 Current task: {task_description}"""},
-                {"role": "user", "content": task_description}
-            ]
-            
-            return self.llm.call(messages)
-
-    research_agent = GroqAgent(
-        role="Senior Web Research Analyst",
-        goal="Gather the most relevant, accurate, and recent online information from trustworthy sources.",
-        backstory="You are an expert online researcher with years of experience in finding reliable information across various domains. You excel at distinguishing credible sources from unreliable ones.",
-        tools=[search_tool]
-    )
-
-    writer_agent = GroqAgent(
-        role="Senior Technical Writer",
-        goal="Transform research findings into clear, engaging, and well-structured summaries that are easy to understand.",
-        backstory="You are a professional writer specializing in technical content. You have a talent for making complex information accessible and engaging for diverse audiences.",
-        tools=[]
-    )
+    # Step 1: Perform web search
+    st.info("🔍 Searching the web...")
+    search_results = duckduckgo_search(query, max_results)
     
-    return research_agent, writer_agent
-
-# =====================================================================
-# 🧾 SIMPLIFIED CREW EXECUTION
-# =====================================================================
-
-def execute_research(query, research_agent, writer_agent, max_results):
-    """Execute the research workflow"""
+    if "Error" in search_results or "No results" in search_results:
+        return f"Search failed: {search_results}"
     
-    # Step 1: Research
+    # Step 2: Research analysis
+    st.info("📊 Analyzing search results...")
     research_prompt = f"""
-    Conduct comprehensive online research on: "{query}"
+    Analyze the following web search results and extract the most important information about: "{query}"
     
-    Requirements:
-    - Search for the most recent and relevant information
-    - Focus on credible sources and authoritative websites
-    - Gather diverse perspectives on the topic
-    - Extract key facts, statistics, and insights
-    - Return {max_results} most valuable findings
+    SEARCH RESULTS:
+    {search_results}
     
-    Use the search tool to find information and provide a comprehensive bullet-point summary.
+    Please provide a comprehensive analysis that:
+    1. Identifies key facts and insights
+    2. Highlights the most relevant information
+    3. Organizes findings by importance
+    4. Notes any conflicting or complementary information
+    5. Focuses on credible and authoritative sources
+    
+    Format your response as a detailed research report with clear sections.
     """
     
-    st.info("🔍 Researching topic...")
-    research_results = research_agent.execute_task(research_prompt)
+    research_analysis = groq_llm.call(
+        research_prompt,
+        system_message="You are a senior research analyst. Your goal is to extract and organize the most valuable information from web search results. Be thorough, objective, and focus on factual accuracy."
+    )
     
-    if not research_results:
-        return "❌ Research failed. Please check your API key and try again."
+    if not research_analysis:
+        return "❌ Research analysis failed. Please check your API key and try again."
     
-    # Step 2: Writing
-    writing_prompt = f"""
-    Analyze the following research findings and create a professional summary:
+    # Step 3: Create final summary
+    st.info("✍️ Writing final summary...")
+    summary_prompt = f"""
+    Based on the following research analysis, create a polished, engaging summary about: "{query}"
     
-    RESEARCH FINDINGS:
-    {research_results}
+    RESEARCH ANALYSIS:
+    {research_analysis}
     
-    Create a summary that:
-    - Highlights the most important information
-    - Presents information in a logical flow
-    - Uses clear, concise language
-    - Includes key takeaways
-    - Is engaging and easy to read
+    Please create a well-structured summary that:
+    - Starts with an engaging introduction
+    - Presents key findings in a logical flow
+    - Uses clear, concise language that's easy to understand
+    - Highlights the most important insights
+    - Ends with meaningful conclusions or takeaways
+    - Is suitable for a general audience
     
-    Format: A well-structured 3-4 paragraph summary with clear headings, key insights, and actionable conclusions.
+    Format: 3-4 paragraphs with clear structure and engaging tone.
     """
     
-    st.info("📝 Writing summary...")
-    final_summary = writer_agent.execute_task(writing_prompt)
+    final_summary = groq_llm.call(
+        summary_prompt,
+        system_message="You are a professional technical writer. You excel at transforming complex information into clear, engaging, and well-structured summaries that are accessible to everyone."
+    )
     
-    return final_summary if final_summary else "❌ Writing failed. Please try again."
+    return final_summary if final_summary else "❌ Summary writing failed. Please try again."
 
 # =====================================================================
 # ⚙️ MAIN EXECUTION
@@ -262,6 +239,7 @@ def main():
     
     if not final_api_key:
         st.error("❌ No Groq API key provided. Please enter your API key or set GROQ_API_KEY environment variable.")
+        st.info("💡 Get your free API key from: https://console.groq.com")
         return
     
     # Initialize Groq LLM
@@ -270,12 +248,6 @@ def main():
         model=model_options[selected_model],
         temperature=temperature
     )
-    
-    # Create search tool instance
-    search_tool = duckduckgo_search_tool
-    
-    # Create agents
-    research_agent, writer_agent = create_agents(groq_llm, search_tool)
     
     # Execute research
     col1, col2 = st.columns([1, 4])
@@ -290,11 +262,11 @@ def main():
                 
                 try:
                     # Update progress
-                    status_text.text("🔄 Initializing research...")
-                    progress_bar.progress(30)
+                    status_text.text("🔄 Starting research workflow...")
+                    progress_bar.progress(20)
                     
                     # Execute research workflow
-                    result = execute_research(query, research_agent, writer_agent, max_results)
+                    result = execute_research_workflow(query, groq_llm, max_results)
                     
                     # Complete progress
                     progress_bar.progress(100)
@@ -305,9 +277,12 @@ def main():
                     
                     # Results in expandable sections
                     with st.expander("📋 Executive Summary", expanded=True):
-                        st.write(result)
+                        if result.startswith("❌") or result.startswith("Search failed"):
+                            st.error(result)
+                        else:
+                            st.write(result)
                     
-                    # Additional information
+                    # Show research details
                     with st.expander("🔧 Research Details"):
                         st.write(f"**Model:** {selected_model}")
                         st.write(f"**Temperature:** {temperature}")
@@ -316,6 +291,8 @@ def main():
                         
                 except Exception as e:
                     st.error(f"❌ Error during research: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
                     progress_bar.progress(0)
                     status_text.text("")
 
@@ -326,6 +303,19 @@ def main():
         - **Adjust temperature**: Lower (0.1-0.3) for factual topics, higher (0.7-1.0) for creative topics
         - **Use more results** for comprehensive research on complex topics
         - **Try different models** if you're not satisfied with the results
+        - **Check your API key** if you get authentication errors
+        """)
+
+    # API key help
+    with st.expander("🔑 API Key Help"):
+        st.markdown("""
+        1. **Get a free Groq API key**: Visit [https://console.groq.com](https://console.groq.com)
+        2. **Create an account** and verify your email
+        3. **Navigate to API Keys** in the dashboard
+        4. **Create a new API key** and copy it
+        5. **Paste it in the sidebar** or set as `GROQ_API_KEY` environment variable
+        
+        Groq offers free tier with generous limits!
         """)
 
 # =====================================================================
@@ -333,7 +323,7 @@ def main():
 # =====================================================================
 
 st.markdown("---")
-st.caption("Built with ❤️ using Groq + CrewAI + DuckDuckGo Search | " +
+st.caption("Built with ❤️ using Groq + DuckDuckGo Search | " +
           "Note: Research quality depends on search results and model capabilities")
 
 if __name__ == "__main__":
