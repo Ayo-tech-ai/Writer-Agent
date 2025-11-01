@@ -91,7 +91,7 @@ def duckduckgo_search(query: str, max_results: int = 5) -> str:
         results = []
         with DDGS() as ddg:
             # Add timeout and better error handling
-            search_results = list(ddg.text(query, max_results=max_results, region='wt-wt', safesearch='moderate'))
+            search_results = list(ddg.text(query, max_results=max_results, region='us-en', safesearch='moderate'))
             
             if not search_results:
                 st.warning("⚠️ No search results found. Trying with different parameters...")
