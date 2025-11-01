@@ -1,12 +1,11 @@
 # =====================================================================
-# 🚀 STREAMLIT AGENTIC RESEARCH APP (GROQ + MULTI-SEARCH + CREWAI)
+# 🚀 STREAMLIT AGENTIC RESEARCH APP (GROQ + SERPER API)
 # =====================================================================
 
 import os
 import streamlit as st
 import requests
 import json
-import time
 from datetime import datetime
 
 # =====================================================================
@@ -23,8 +22,8 @@ st.set_page_config(
 st.title("🌍 Groq-Powered Agentic Researcher")
 st.markdown(
     """
-    🤖 **Powered by Groq + Multiple Search Methods**  
-    _Perform intelligent web research and receive concise summaries._
+    🤖 **Powered by Groq + Serper API**  
+    _Perform intelligent web research with reliable search results._
     """
 )
 
@@ -35,18 +34,18 @@ st.markdown(
 with st.sidebar:
     st.header("🔐 Configuration")
     
-    # API Key input with option to use environment variable
+    # API Key inputs
     groq_api_key = st.text_input(
         "Enter your Groq API Key", 
         type="password",
         placeholder="gsk_... or leave blank to use GROQ_API_KEY env var"
     )
     
-    # Optional: Serper API key for enhanced search
     serper_api_key = st.text_input(
-        "Optional: Serper API Key (for better search)",
+        "Serper API Key (Required)",
         type="password",
-        placeholder="Leave blank for free search methods"
+        placeholder="Enter your Serper API key",
+        help="Get free key from https://serper.dev"
     )
     
     # Model selection
@@ -70,126 +69,76 @@ with st.sidebar:
     with col2:
         max_results = st.slider("Max Results", 1, 10, 5)
     
-    # Search method selection
-    search_method = st.radio(
-        "Search Method:",
-        ["Auto (Try Multiple)", "DuckDuckGo", "Serper API", "AI Knowledge Only"],
-        index=0
-    )
-    
     st.markdown("---")
-    st.info("💡 **Free tier available for all methods!**")
+    st.info("💡 **Using Serper API for reliable web search**")
 
 # =====================================================================
-# 🔍 MULTI-SEARCH ENGINE IMPLEMENTATION
+# 🔍 SERPER API SEARCH IMPLEMENTATION
 # =====================================================================
 
 def serper_search(query: str, max_results: int = 5, api_key: str = None) -> str:
-    """Search using Serper API (more reliable)"""
+    """Search using Serper API - our primary search method"""
     if not api_key:
-        return "Serper API key not provided"
+        return "❌ Serper API key not provided"
     
     try:
+        st.write(f"🔍 Searching Serper API for: '{query}'")
+        
         url = "https://google.serper.dev/search"
-        payload = json.dumps({"q": query, "num": max_results})
+        payload = json.dumps({
+            "q": query, 
+            "num": max_results,
+            "gl": "us",  # Country: United States
+            "hl": "en"   # Language: English
+        })
         headers = {
             'X-API-KEY': api_key,
             'Content-Type': 'application/json'
         }
         
-        response = requests.post(url, headers=headers, data=payload, timeout=30)
-        response.raise_for_status()
+        with st.spinner("Searching the web..."):
+            response = requests.post(url, headers=headers, data=payload, timeout=30)
+            response.raise_for_status()
         
         data = response.json()
         results = []
         
         # Process organic results
-        if 'organic' in data:
+        if 'organic' in data and data['organic']:
             for i, result in enumerate(data['organic'][:max_results], 1):
                 title = result.get('title', 'No title')
                 link = result.get('link', 'No URL')
                 snippet = result.get('snippet', 'No description')
                 results.append(f"### 📄 Result {i}: {title}\n**URL:** {link}\n**Summary:** {snippet}\n")
+                
+                # Show real-time progress
+                st.write(f"✅ Found: {title[:80]}...")
+        
+        # Also check for news results if organic results are limited
+        if len(results) < max_results and 'news' in data and data['news']:
+            news_to_add = max_results - len(results)
+            for i, result in enumerate(data['news'][:news_to_add], len(results) + 1):
+                title = result.get('title', 'No title')
+                link = result.get('link', 'No URL')
+                snippet = result.get('snippet', 'No description')
+                results.append(f"### 📰 News {i}: {title}\n**URL:** {link}\n**Summary:** {snippet}\n")
+                st.write(f"✅ Found news: {title[:80]}...")
         
         if results:
-            st.success(f"✅ Serper found {len(results)} results")
+            st.success(f"✅ Serper API found {len(results)} high-quality results")
             return "\n\n".join(results)
         else:
-            return "No results found via Serper"
+            st.warning("⚠️ No search results found via Serper API")
+            return "❌ No search results found"
             
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Serper API request failed: {str(e)}"
+        st.error(f"❌ {error_msg}")
+        return f"❌ {error_msg}"
     except Exception as e:
-        return f"Serper search error: {str(e)}"
-
-def duckduckgo_search(query: str, max_results: int = 5) -> str:
-    """Search using DuckDuckGo with enhanced error handling"""
-    try:
-        # Try to import and use DuckDuckGo
-        from duckduckgo_search import DDGS
-        
-        results = []
-        with DDGS() as ddg:
-            search_results = list(ddg.text(
-                query, 
-                max_results=max_results,
-                region='wt-wt',
-                safesearch='moderate',
-                timelimit='y'
-            ))
-            
-            for i, result in enumerate(search_results, 1):
-                title = result.get("title", "No title")
-                href = result.get("href", "No URL")
-                body = result.get("body", "No description")
-                results.append(f"### 📄 Result {i}: {title}\n**URL:** {href}\n**Summary:** {body}\n")
-        
-        if results:
-            st.success(f"✅ DuckDuckGo found {len(results)} results")
-            return "\n\n".join(results)
-        else:
-            return "No results found via DuckDuckGo"
-    
-    except Exception as e:
-        return f"DuckDuckGo search error: {str(e)}"
-
-def brave_search(query: str, max_results: int = 5) -> str:
-    """Alternative search method using Brave Search (free tier available)"""
-    try:
-        # This is a placeholder - you would need to sign up for Brave Search API
-        # For now, we'll simulate this or use another method
-        return "Brave Search requires API key setup"
-    except Exception as e:
-        return f"Brave search error: {str(e)}"
-
-def perform_web_search(query: str, max_results: int = 5, method: str = "auto", serper_key: str = None) -> str:
-    """Main search function that tries multiple methods"""
-    
-    st.write(f"🔍 Searching for: '{query}'")
-    
-    if method == "ai knowledge only":
-        return "search_unavailable"
-    
-    search_attempts = []
-    
-    # Try Serper first if API key is available
-    if serper_key and method in ["auto", "Serper API"]:
-        st.write("🔄 Trying Serper API...")
-        result = serper_search(query, max_results, serper_key)
-        if "found" in result.lower() and "no results" not in result.lower():
-            return result
-        search_attempts.append(f"Serper: {result}")
-    
-    # Try DuckDuckGo
-    if method in ["auto", "DuckDuckGo"]:
-        st.write("🔄 Trying DuckDuckGo...")
-        result = duckduckgo_search(query, max_results)
-        if "found" in result.lower() and "no results" not in result.lower():
-            return result
-        search_attempts.append(f"DuckDuckGo: {result}")
-    
-    # If all methods fail
-    error_msg = f"All search methods failed. Attempts:\n" + "\n".join(search_attempts)
-    st.error("❌ " + error_msg)
-    return "search_unavailable"
+        error_msg = f"Unexpected error with Serper API: {str(e)}"
+        st.error(f"❌ {error_msg}")
+        return f"❌ {error_msg}"
 
 # =====================================================================
 # 🧠 GROQ LLM INTEGRATION
@@ -233,7 +182,7 @@ class GroqLLM:
             return result["choices"][0]["message"]["content"]
             
         except requests.exceptions.RequestException as e:
-            st.error(f"❌ API Request failed: {str(e)}")
+            st.error(f"❌ Groq API Request failed: {str(e)}")
             if hasattr(e, 'response') and e.response is not None:
                 st.error(f"Response: {e.response.text}")
             return None
@@ -245,84 +194,67 @@ class GroqLLM:
 # 🎯 RESEARCH WORKFLOW
 # =====================================================================
 
-def execute_research_workflow(query, groq_llm, max_results, search_method, serper_key):
-    """Execute the complete research workflow"""
+def execute_research_workflow(query, groq_llm, max_results, serper_key):
+    """Execute the complete research workflow using only Serper API"""
     
-    # Step 1: Perform web search
-    with st.status("🔍 Searching the web...", expanded=True) as status:
-        search_results = perform_web_search(query, max_results, search_method, serper_key)
-        status.update(label="✅ Search completed", state="complete")
+    # Step 1: Perform web search with Serper API
+    with st.status("🔍 Searching the web with Serper API...", expanded=True) as status:
+        search_results = serper_search(query, max_results, serper_key)
+        
+        # Check if search was successful
+        if search_results.startswith("❌"):
+            st.error("Search failed. Please check your Serper API key and try again.")
+            return None
+            
+        status.update(label="✅ Web search completed", state="complete")
     
-    # Step 2: Generate research report
-    with st.status("📊 Generating research report...", expanded=True) as status:
-        if search_results == "search_unavailable":
-            # Use AI's internal knowledge with enhanced prompt
-            st.info("🧠 Using AI knowledge base with enhanced research...")
-            research_prompt = f"""
-            Create a comprehensive research report about: "{query}"
-            
-            Current Date: {datetime.now().strftime('%Y-%m-%d')}
-            
-            Please provide a detailed analysis including:
-            
-            ## Executive Summary
-            - Key overview and importance
-            
-            ## Current Trends and Developments (2023-2024)
-            - Latest advancements and innovations
-            - Market trends and adoption rates
-            - Key players and organizations
-            
-            ## Applications and Use Cases
-            - Practical implementations
-            - Industry-specific applications
-            - Real-world examples
-            
-            ## Challenges and Opportunities
-            - Current limitations and barriers
-            - Future growth potential
-            - Emerging opportunities
-            
-            ## Future Outlook
-            - Predictions and forecasts
-            - Potential impact
-            - Recommended areas for further research
-            
-            Format this as a professional research report with clear sections and bullet points.
-            Focus on providing actionable insights and comprehensive coverage.
-            """
-            
-            system_msg = """You are a senior research analyst at a top consulting firm. 
-            Create comprehensive, well-structured research reports that are data-driven and insightful. 
-            Even without web access, draw upon your extensive training data to provide valuable analysis."""
-            
-        else:
-            # Use actual search results
-            research_prompt = f"""
-            Analyze the following web search results and create a comprehensive research report about: "{query}"
-            
-            SEARCH RESULTS:
-            {search_results}
-            
-            Current Date: {datetime.now().strftime('%Y-%m-%d')}
-            
-            Please create a structured research report that:
-            1. Synthesizes information from the search results
-            2. Identifies key trends and patterns
-            3. Highlights credible sources and data points
-            4. Provides balanced analysis of different perspectives
-            5. Includes specific examples and statistics where available
-            
-            Format as a professional report with clear sections and evidence-based insights.
-            """
-            
-            system_msg = "You are a senior research analyst. Synthesize search results into comprehensive, well-structured reports with credible insights."
+    # Step 2: Analyze search results and generate research report
+    with st.status("📊 Analyzing search results and generating report...", expanded=True) as status:
+        research_prompt = f"""
+        Analyze the following web search results and create a comprehensive research report about: "{query}"
+        
+        SEARCH RESULTS:
+        {search_results}
+        
+        Current Date: {datetime.now().strftime('%Y-%m-%d')}
+        
+        Please create a well-structured research report that includes:
+        
+        ## Executive Summary
+        - Brief overview of key findings
+        - Main conclusions and insights
+        
+        ## Key Findings
+        - Most important information from the search results
+        - Relevant data, statistics, and facts
+        - Current trends and developments
+        
+        ## Detailed Analysis
+        - In-depth analysis of the topic based on the search results
+        - Connections between different pieces of information
+        - Credibility assessment of sources where possible
+        
+        ## Applications and Implications
+        - Practical applications of the information
+        - Potential impact and significance
+        - Future implications
+        
+        ## Conclusion
+        - Summary of main points
+        - Final recommendations or insights
+        
+        Base your report strictly on the provided search results. Be comprehensive, objective, and well-organized.
+        """
+        
+        system_msg = """You are a professional research analyst. Create comprehensive, 
+        well-structured research reports based on web search results. Be factual, objective, 
+        and focus on synthesizing information from the provided sources."""
         
         research_report = groq_llm.call(research_prompt, system_msg)
         status.update(label="✅ Research report completed", state="complete")
     
     if not research_report:
-        return "❌ Research failed. Please check your API key and try again."
+        return None
     
     # Step 3: Create executive summary
     with st.status("✍️ Creating executive summary...", expanded=True) as status:
@@ -334,11 +266,11 @@ def execute_research_workflow(query, groq_llm, max_results, search_method, serpe
         
         Create a 2-3 paragraph executive summary that:
         - Highlights the most important findings
-        - Presents key insights in a business-friendly format
-        - Includes actionable recommendations
-        - Is suitable for busy executives
+        - Presents key insights clearly and concisely
+        - Includes actionable takeaways
+        - Is suitable for busy decision-makers
         
-        Keep it concise, impactful, and easy to understand.
+        Keep it professional, impactful, and easy to understand.
         """
         
         executive_summary = groq_llm.call(
@@ -350,7 +282,7 @@ def execute_research_workflow(query, groq_llm, max_results, search_method, serpe
     return {
         "research_report": research_report,
         "executive_summary": executive_summary,
-        "search_used": search_results != "search_unavailable"
+        "search_results": search_results
     }
 
 # =====================================================================
@@ -371,9 +303,15 @@ def main():
     final_groq_key = groq_api_key.strip() if groq_api_key and groq_api_key.strip() else os.getenv("GROQ_API_KEY")
     final_serper_key = serper_api_key.strip() if serper_api_key and serper_api_key.strip() else os.getenv("SERPER_API_KEY")
     
+    # Validate API keys
     if not final_groq_key:
         st.error("❌ No Groq API key provided. Please enter your API key or set GROQ_API_KEY environment variable.")
         st.info("💡 Get your free API key from: https://console.groq.com")
+        return
+        
+    if not final_serper_key:
+        st.error("❌ No Serper API key provided. Please enter your Serper API key.")
+        st.info("💡 Get your free API key from: https://serper.dev")
         return
     
     # Initialize Groq LLM
@@ -393,11 +331,11 @@ def main():
                 try:
                     # Execute research workflow
                     result = execute_research_workflow(
-                        query, groq_llm, max_results, search_method.lower(), final_serper_key
+                        query, groq_llm, max_results, final_serper_key
                     )
                     
-                    if isinstance(result, str) and result.startswith("❌"):
-                        st.error(result)
+                    if result is None:
+                        st.error("❌ Research failed. Please check your API keys and try again.")
                     else:
                         st.success("✅ Research complete!")
                         
@@ -408,56 +346,59 @@ def main():
                         with st.expander("📊 Full Research Report", expanded=False):
                             st.markdown(result["research_report"])
                         
+                        with st.expander("🔍 Raw Search Results", expanded=False):
+                            st.markdown(result["search_results"])
+                        
                         with st.expander("🔧 Research Details", expanded=False):
                             st.write(f"**Model:** {selected_model}")
                             st.write(f"**Temperature:** {temperature}")
                             st.write(f"**Max Results:** {max_results}")
-                            st.write(f"**Search Method:** {search_method}")
-                            st.write(f"**Web Search Used:** {result['search_used']}")
+                            st.write(f"**Search Engine:** Serper API")
                             st.write(f"**Query:** {query}")
+                            st.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                         
                 except Exception as e:
                     st.error(f"❌ Error during research: {str(e)}")
 
     # API Key Help Section
-    with st.expander("🔑 Get API Keys (Free Tiers Available)"):
+    with st.expander("🔑 API Key Information"):
         st.markdown("""
-        **🌐 For Better Search Results:**
+        **Required API Keys:**
         
-        **1. Serper API (Recommended)**
+        **1. Serper API** (Web Search)
         - Visit: https://serper.dev/
         - Free tier: 2,500 searches/month
-        - More reliable than DuckDuckGo
-        - Easy setup
+        - Fast and reliable Google search results
+        - No rate limiting issues
         
-        **2. Groq API (Required)**
+        **2. Groq API** (AI Processing)
         - Visit: https://console.groq.com/
         - Free tier: Generous limits
         - Fast inference speeds
+        - Multiple model options
         
-        **Setup:**
-        - Get your free API keys
-        - Enter Groq API key in sidebar
-        - Optional: Enter Serper API key for better search
+        **How to get started:**
+        1. Sign up for free accounts at both services
+        2. Copy your API keys from the dashboards
+        3. Enter both keys in the sidebar
+        4. Start researching!
         """)
 
-    # Troubleshooting Section
-    with st.expander("🔧 Search Troubleshooting"):
+    # Tips Section
+    with st.expander("💡 Tips for Better Results"):
         st.markdown("""
-        **If search isn't working:**
+        **For optimal research results:**
         
-        ✅ **Quick Fixes:**
-        - Try **"AI Knowledge Only"** mode in sidebar
-        - Get a **free Serper API key** (more reliable)
-        - Use more **specific search terms**
-        - Try again in **5-10 minutes** (rate limits reset)
+        - **Be specific** with your search queries
+        - **Use current year** for time-sensitive topics
+        - **Include industry/domain** for focused results
+        - **Adjust temperature**: Lower for facts, higher for creativity
+        - **Use more results** for comprehensive research
         
-        🔄 **Search Methods Available:**
-        1. **Serper API** (Most reliable - needs free API key)
-        2. **DuckDuckGo** (Free but often rate-limited)
-        3. **AI Knowledge** (Always works - uses model's training data)
-        
-        💡 **Pro Tip:** Get a free Serper API key for the best experience!
+        **Example queries:**
+        - "Machine learning applications in agriculture 2024"
+        - "Renewable energy adoption trends in Europe"
+        - "AI in healthcare diagnostics latest developments"
         """)
 
 # =====================================================================
@@ -465,8 +406,8 @@ def main():
 # =====================================================================
 
 st.markdown("---")
-st.caption("Built with ❤️ using Groq + Multiple Search Methods | " +
-          "Free tiers available for all services")
+st.caption("Built with ❤️ using Groq + Serper API | " +
+          "Reliable web search with AI-powered analysis")
 
 if __name__ == "__main__":
     main()
