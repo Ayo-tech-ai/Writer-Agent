@@ -1,5 +1,5 @@
-streamlit
-crewai
-duckduckgo-search
 groq
+request
+duckduckgo-search==6.2.10
 requests
+streamlit
