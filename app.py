@@ -79,37 +79,11 @@ with st.sidebar:
         """)
 
 # =====================================================================
-# 🧠 INITIALIZE GROQ LLM
-# =====================================================================
-
-def initialize_llm(api_key, model_name, temperature):
-    """Initialize Groq LLM with error handling."""
-    try:
-        # Use provided key or environment variable
-        final_api_key = api_key.strip() if api_key.strip() else os.getenv("GROQ_API_KEY")
-        
-        if not final_api_key:
-            st.error("❌ No Groq API key provided. Please enter your API key or set GROQ_API_KEY environment variable.")
-            return None
-            
-        return LLM(
-            model=model_name,
-            api_key=final_api_key,
-            temperature=temperature
-        )
-    except Exception as e:
-        st.error(f"❌ Error initializing LLM: {str(e)}")
-        return None
-
-
-
-# =====================================================================
-# 👥 DEFINE # =====================================================================
-# 🌐 DUCKDUCKGO SEARCH TOOL (UPDATED)
+# 🌐 DUCKDUCKGO SEARCH TOOL
 # =====================================================================
 
 @tool
-def duckduckgo_search(query: str, max_results: int = 5) -> str:
+def duckduckgo_search_tool(query: str, max_results: int = 5) -> str:
     """Search the web using DuckDuckGo and return top results."""
     try:
         results = []
@@ -128,6 +102,32 @@ def duckduckgo_search(query: str, max_results: int = 5) -> str:
     except Exception as e:
         return f"Error performing search: {str(e)}"
 
+# =====================================================================
+# 🧠 INITIALIZE GROQ LLM
+# =====================================================================
+
+def initialize_llm(api_key, model_name, temperature):
+    """Initialize Groq LLM with error handling."""
+    try:
+        # Use provided key or environment variable
+        final_api_key = api_key.strip() if api_key and api_key.strip() else os.getenv("GROQ_API_KEY")
+        
+        if not final_api_key:
+            st.error("❌ No Groq API key provided. Please enter your API key or set GROQ_API_KEY environment variable.")
+            return None
+            
+        return LLM(
+            model=model_name,
+            api_key=final_api_key,
+            temperature=temperature
+        )
+    except Exception as e:
+        st.error(f"❌ Error initializing LLM: {str(e)}")
+        return None
+
+# =====================================================================
+# 👥 DEFINE AGENTS
+# =====================================================================
 
 def create_agents(llm, search_tool):
     """Create research and writer agents."""
@@ -208,8 +208,11 @@ def main():
     if not llm:
         return
     
+    # Create search tool instance
+    search_tool = duckduckgo_search_tool
+    
     # Create agents and tools
-    research_agent, writer_agent = create_agents(llm, duckduckgo_tool)
+    research_agent, writer_agent = create_agents(llm, search_tool)
     
     # Execute research
     col1, col2 = st.columns([1, 4])
