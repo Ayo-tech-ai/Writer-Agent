@@ -6,7 +6,7 @@ import os
 import streamlit as st
 from duckduckgo_search import DDGS
 import requests
-import json
+import time
 
 # =====================================================================
 # ⚙️ APP CONFIGURATION
@@ -79,7 +79,7 @@ with st.sidebar:
         """)
 
 # =====================================================================
-# 🌐 DUCKDUCKGO SEARCH TOOL
+# 🌐 IMPROVED DUCKDUCKGO SEARCH TOOL
 # =====================================================================
 
 def duckduckgo_search(query: str, max_results: int = 5) -> str:
@@ -87,19 +87,48 @@ def duckduckgo_search(query: str, max_results: int = 5) -> str:
     try:
         results = []
         with DDGS() as ddg:
-            for result in ddg.text(query, max_results=max_results):
-                title = result.get("title", "No title")
-                href = result.get("href", "No URL")
-                body = result.get("body", "No description")
-                results.append(f"**{title}**\n{href}\n{body}\n")
-        
-        if not results:
-            return "No results found for the given query."
+            # Try multiple search approaches if first one fails
+            search_attempts = [
+                query,
+                f"{query} 2024",
+                f"latest {query}",
+                f"{query} news developments"
+            ]
             
-        return "\n\n".join(results)
+            for attempt in search_attempts:
+                try:
+                    search_results = list(ddg.text(attempt, max_results=max_results))
+                    if search_results:
+                        for result in search_results:
+                            title = result.get("title", "No title")
+                            href = result.get("href", "No URL")
+                            body = result.get("body", "No description")
+                            results.append(f"**{title}**\nURL: {href}\nDescription: {body}\n")
+                        break  # Stop if we found results
+                    time.sleep(1)  # Brief pause between attempts
+                except Exception as e:
+                    continue
+            
+        if not results:
+            return f"No results found for '{query}'. Try using more specific search terms."
+            
+        # Remove duplicates based on URL
+        unique_results = []
+        seen_urls = set()
+        for result in results:
+            # Extract URL from result string
+            lines = result.split('\n')
+            url_line = [line for line in lines if line.startswith('URL: ')]
+            if url_line:
+                url = url_line[0].replace('URL: ', '')
+                if url not in seen_urls and url != "No URL":
+                    seen_urls.add(url)
+                    unique_results.append(result)
+        
+        return "\n\n".join(unique_results[:max_results])
     
     except Exception as e:
-        return f"Error performing search: {str(e)}"
+        return f"Error performing search: {str(e)}. Please try again."
 
 # =====================================================================
 # 🧠 GROQ LLM INTEGRATION
@@ -155,35 +184,65 @@ class GroqLLM:
             return None
 
 # =====================================================================
-# 🎯 RESEARCH WORKFLOW
+# 🎯 IMPROVED RESEARCH WORKFLOW
 # =====================================================================
 
 def execute_research_workflow(query, groq_llm, max_results):
     """Execute the complete research workflow"""
     
-    # Step 1: Perform web search
-    st.info("🔍 Searching the web...")
+    # Step 1: Perform web search with progress indicator
+    search_status = st.empty()
+    search_status.info("🔍 Searching the web for relevant information...")
+    
     search_results = duckduckgo_search(query, max_results)
     
-    if "Error" in search_results or "No results" in search_results:
-        return f"Search failed: {search_results}"
+    # Check if search was successful
+    if "No results found" in search_results or "Error performing search" in search_results:
+        search_status.warning(f"⚠️ {search_results}")
+        
+        # If search fails, use the LLM to generate information based on its training data
+        st.info("🧠 Using AI knowledge base (search unavailable)...")
+        fallback_prompt = f"""
+        Based on your comprehensive knowledge, provide a detailed overview of: "{query}"
+        
+        Please include:
+        1. Key concepts and definitions
+        2. Current state and recent developments
+        3. Major applications and use cases
+        4. Future trends and implications
+        5. Important considerations or challenges
+        
+        Provide a well-structured, informative overview suitable for someone researching this topic.
+        """
+        
+        fallback_result = groq_llm.call(
+            fallback_prompt,
+            system_message="You are an expert research assistant with comprehensive knowledge across many domains. Provide detailed, accurate, and well-structured information even without current web search results."
+        )
+        
+        return fallback_result if fallback_result else "Unable to generate research summary. Please try a different search term."
+    
+    search_status.success("✅ Search completed successfully!")
     
     # Step 2: Research analysis
-    st.info("📊 Analyzing search results...")
+    analysis_status = st.empty()
+    analysis_status.info("📊 Analyzing and organizing search results...")
+    
     research_prompt = f"""
-    Analyze the following web search results and extract the most important information about: "{query}"
+    Analyze the following web search results about "{query}" and create a comprehensive research summary:
     
     SEARCH RESULTS:
     {search_results}
     
-    Please provide a comprehensive analysis that:
-    1. Identifies key facts and insights
-    2. Highlights the most relevant information
-    3. Organizes findings by importance
-    4. Notes any conflicting or complementary information
-    5. Focuses on credible and authoritative sources
+    Please provide a well-organized research summary that:
+    1. Starts with an executive overview
+    2. Identifies and explains key findings
+    3. Highlights the most important insights
+    4. Organizes information logically
+    5. Notes the credibility of sources where possible
+    6. Ends with key takeaways
     
-    Format your response as a detailed research report with clear sections.
+    Focus on creating valuable, actionable insights from the search results.
     """
     
     research_analysis = groq_llm.call(
@@ -192,33 +251,40 @@ def execute_research_workflow(query, groq_llm, max_results):
     )
     
     if not research_analysis:
-        return "❌ Research analysis failed. Please check your API key and try again."
+        analysis_status.error("❌ Research analysis failed.")
+        return "Research analysis failed. Please check your API key and try again."
+    
+    analysis_status.success("✅ Analysis completed!")
     
     # Step 3: Create final summary
-    st.info("✍️ Writing final summary...")
+    writing_status = st.empty()
+    writing_status.info("✍️ Writing final polished summary...")
+    
     summary_prompt = f"""
-    Based on the following research analysis, create a polished, engaging summary about: "{query}"
+    Transform the following research analysis into a polished, engaging final report about: "{query}"
     
     RESEARCH ANALYSIS:
     {research_analysis}
     
-    Please create a well-structured summary that:
-    - Starts with an engaging introduction
-    - Presents key findings in a logical flow
-    - Uses clear, concise language that's easy to understand
-    - Highlights the most important insights
-    - Ends with meaningful conclusions or takeaways
-    - Is suitable for a general audience
+    Please create a professional summary that:
+    - Has an engaging introduction that hooks the reader
+    - Presents information in a clear, logical flow
+    - Uses accessible language while maintaining accuracy
+    - Highlights the most important insights prominently
+    - Includes practical implications or applications
+    - Ends with memorable conclusions
     
-    Format: 3-4 paragraphs with clear structure and engaging tone.
+    Make it comprehensive yet concise, suitable for both experts and general audiences.
     """
     
     final_summary = groq_llm.call(
         summary_prompt,
-        system_message="You are a professional technical writer. You excel at transforming complex information into clear, engaging, and well-structured summaries that are accessible to everyone."
+        system_message="You are a professional technical writer and researcher. You excel at transforming complex information into clear, engaging, and well-structured reports that are accessible to everyone while maintaining accuracy and depth."
     )
     
-    return final_summary if final_summary else "❌ Summary writing failed. Please try again."
+    writing_status.success("✅ Writing completed!")
+    
+    return final_summary if final_summary else "Unable to generate final summary. Please try again."
 
 # =====================================================================
 # ⚙️ MAIN EXECUTION
@@ -230,7 +296,7 @@ def main():
     # User input
     query = st.text_area(
         "🔎 Enter your research topic:", 
-        placeholder="e.g. Emerging AI applications in African agriculture, Latest developments in quantum computing, Sustainable energy trends 2024...",
+        placeholder="e.g. Artificial Intelligence applications in healthcare, Latest developments in renewable energy, Impact of blockchain technology...",
         height=100
     )
     
@@ -263,7 +329,7 @@ def main():
                 try:
                     # Update progress
                     status_text.text("🔄 Starting research workflow...")
-                    progress_bar.progress(20)
+                    progress_bar.progress(10)
                     
                     # Execute research workflow
                     result = execute_research_workflow(query, groq_llm, max_results)
@@ -276,11 +342,11 @@ def main():
                     st.success("✅ Research complete!")
                     
                     # Results in expandable sections
-                    with st.expander("📋 Executive Summary", expanded=True):
-                        if result.startswith("❌") or result.startswith("Search failed"):
-                            st.error(result)
+                    with st.expander("📋 Research Report", expanded=True):
+                        if result:
+                            st.markdown(result)
                         else:
-                            st.write(result)
+                            st.error("No results generated. Please try again.")
                     
                     # Show research details
                     with st.expander("🔧 Research Details"):
@@ -291,31 +357,33 @@ def main():
                         
                 except Exception as e:
                     st.error(f"❌ Error during research: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
                     progress_bar.progress(0)
                     status_text.text("")
 
     # Display usage tips
     with st.expander("💡 Tips for better results"):
         st.markdown("""
-        - **Be specific** in your research topic for more relevant results
+        - **Be specific**: Instead of "AI", try "AI applications in healthcare 2024"
+        - **Use current topics**: Add "latest" or "2024" for recent information
         - **Adjust temperature**: Lower (0.1-0.3) for factual topics, higher (0.7-1.0) for creative topics
-        - **Use more results** for comprehensive research on complex topics
-        - **Try different models** if you're not satisfied with the results
-        - **Check your API key** if you get authentication errors
+        - **Try different models**: Some models may work better for certain topics
+        - **Check your query**: Make sure it's clear and well-defined
         """)
 
-    # API key help
-    with st.expander("🔑 API Key Help"):
+    # Search troubleshooting
+    with st.expander("🔍 Search Troubleshooting"):
         st.markdown("""
-        1. **Get a free Groq API key**: Visit [https://console.groq.com](https://console.groq.com)
-        2. **Create an account** and verify your email
-        3. **Navigate to API Keys** in the dashboard
-        4. **Create a new API key** and copy it
-        5. **Paste it in the sidebar** or set as `GROQ_API_KEY` environment variable
+        **If search fails:**
+        - The app will use the AI's built-in knowledge as a fallback
+        - Try more specific search terms
+        - Check your internet connection
+        - Try fewer max results (3-5)
+        - Wait a moment and try again
         
-        Groq offers free tier with generous limits!
+        **Good examples:**
+        - "Machine learning in finance 2024"
+        - "Renewable energy advancements"
+        - "Blockchain technology applications"
         """)
 
 # =====================================================================
