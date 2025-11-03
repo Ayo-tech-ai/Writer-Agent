@@ -15,7 +15,7 @@ from docx import Document
 # =====================================================================
 
 st.set_page_config(
-    page_title="Groq Agentic Researcher",
+    page_title="LinkedIn Post Generator",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -44,11 +44,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🌍 Groq-Powered Agentic Researcher")
+st.title("🌍 LinkedIn Post Generator")
 st.markdown(
     """
     🤖 Powered by Groq + Serper API  
-    Perform intelligent web research with reliable search results.
+    Perform intelligent web research with reliable search results and Generate a LinkedIn Post.
     """
 )
 
@@ -77,9 +77,7 @@ with st.sidebar:
     model_options = {
         "Llama 3.3 70B Versatile": "llama-3.3-70b-versatile",
         "Llama 3.1 8B Instant": "llama-3.1-8b-instant",
-        "Llama 3.1 70B Versatile": "llama-3.1-70b-versatile",
-        "Mixtral 8x7B": "mixtral-8x7b-32768",
-        "Gemma2 9B": "gemma2-9b-it"
+
     }
     selected_model = st.selectbox(
         "Select Model",
@@ -248,9 +246,21 @@ def execute_research_workflow(query, groq_llm, max_results, serper_key):
     # Step 3: LinkedIn Post
     with st.status("💬 Creating LinkedIn post...", expanded=True) as status:
         linkedin_post_prompt = f"""
-        Based on the following research report, create a professional LinkedIn post...
+        Based on the following research report, create a high-quality LinkedIn post that summarizes and humanizes the key findings.
+
         RESEARCH REPORT:
         {research_report}
+
+        Write a professional, engaging LinkedIn post that:
+        - Has a catchy headline with an emoji (🚀, 💡, 🌍, etc.)
+        - Begins with a strong hook that sparks curiosity
+        - Contains 3–6 short sections with emoji headers (e.g., 🌾 The New Farming Frontier)
+        - Clearly explains insights, data, and implications in conversational tone
+        - Feels authentic — not robotic or academic
+        - Ends with a reflective question or call to action
+        - Includes 5–8 relevant hashtags
+        - Optionally uses emojis for visual flow
+        - Length: 1000–1500 words
         """
         linkedin_post = groq_llm.call(linkedin_post_prompt, "You are a professional LinkedIn storyteller.")
         status.update(label="✅ LinkedIn post created successfully", state="complete")
