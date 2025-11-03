@@ -436,7 +436,7 @@ def execute_research_workflow_with_progress(query, groq_llm, max_results, serper
     
     linkedin_post = groq_llm.call(
         enhanced_linkedin_prompt,
-        "You are a professional LinkedIn content creator with expertise in creating viral professional content."
+        "You are a professional LinkedIn content creator with expertise in creating viral professional content. Your post must be of length 1,200 to 1,500 words"
     )
     progress_bar.progress(100)
     status_text.text("✅ Research complete!")
