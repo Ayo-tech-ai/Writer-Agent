@@ -1,5 +1,5 @@
 # =====================================================================
-# 🚀 STREAMLIT AGENTIC RESEARCH APP (GROQ + SERPER API)
+# 🚀 ENHANCED STREAMLIT AGENTIC RESEARCH APP (GROQ + SERPER API)
 # =====================================================================
 
 import os
@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 from io import BytesIO
 from docx import Document
+from functools import lru_cache
+import time
 
 # =====================================================================
 # ⚙️ APP CONFIGURATION
@@ -41,6 +43,9 @@ st.markdown("""
         h1, h2, h3 {
             color: #222;
         }
+        .stProgress > div > div > div > div {
+            background-color: #4CAF50;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -53,8 +58,55 @@ st.markdown(
 )
 
 # =====================================================================
-# 🔑 API KEY INPUT
+# 🎯 CONSTANTS & PROMPT TEMPLATES
 # =====================================================================
+
+LINKEDIN_POST_PROMPT = """
+Create a professional LinkedIn post based on this research. Follow these guidelines:
+
+**STRUCTURE:**
+🎯 Catchy Headline with Emoji
+💡 Strong Opening Hook
+📊 Key Insights (3-5 bullet points)
+🚀 Practical Implications
+🤔 Thought-provoking Question
+🏷️ Relevant Hashtags
+
+**TONE:**
+- Professional yet conversational
+- Data-driven but accessible
+- Engaging and shareable
+- Authentic voice
+
+**FORMATTING:**
+- Use emojis sparingly for visual breaks
+- Short paragraphs (2-3 lines max)
+- Clear section separation
+- Mobile-friendly formatting
+
+Research Content: {research_content}
+
+Generate the LinkedIn post accordingly:
+"""
+
+# =====================================================================
+# 🔑 API KEY INPUT & VALIDATION
+# =====================================================================
+
+def validate_api_keys(groq_key, serper_key):
+    """Validate API keys before proceeding"""
+    errors = []
+    if not groq_key:
+        errors.append("❌ Groq API key is required")
+    elif not groq_key.startswith(('gsk_', 'gpk_')):
+        errors.append("❌ Invalid Groq API key format (should start with gsk_ or gpk_)")
+    
+    if not serper_key:
+        errors.append("❌ Serper API key is required")
+    elif len(serper_key) < 10:
+        errors.append("❌ Invalid Serper API key")
+    
+    return errors
 
 with st.sidebar:
     st.header("🔐 Configuration")
@@ -77,7 +129,6 @@ with st.sidebar:
     model_options = {
         "Llama 3.3 70B Versatile": "llama-3.3-70b-versatile",
         "Llama 3.1 8B Instant": "llama-3.1-8b-instant",
-
     }
     selected_model = st.selectbox(
         "Select Model",
@@ -93,17 +144,44 @@ with st.sidebar:
         max_results = st.slider("Max Results", 1, 10, 5)
 
     st.markdown("---")
+    st.header("⚙️ Advanced Settings")
+    
+    # Post customization
+    post_tone = st.selectbox(
+        "Post Tone",
+        ["Professional", "Conversational", "Inspirational", "Technical", "Casual"]
+    )
+    
+    include_statistics = st.checkbox("Include Statistics", value=True)
+    add_call_to_action = st.checkbox("Add Call-to-Action", value=True)
+    
+    # Target audience
+    audience_options = ["Executives", "Managers", "Technical", "General", "Students", "Entrepreneurs"]
+    audience = st.multiselect(
+        "Target Audience",
+        audience_options,
+        default=["General"]
+    )
+
+    st.markdown("---")
     st.info("💡 **Using Serper API for reliable web search**")
 
 # =====================================================================
-# 🔍 SERPER API SEARCH IMPLEMENTATION
+# 🔍 ENHANCED SERPER API SEARCH IMPLEMENTATION
 # =====================================================================
 
-def serper_search(query: str, max_results: int = 5, api_key: str = None) -> str:
-    """Search using Serper API - our primary search method"""
+def safe_serper_search(query: str, max_results: int = 5, api_key: str = None) -> str:
+    """Enhanced search with better error handling and validation"""
     if not api_key:
         return "❌ Serper API key not provided"
-
+    
+    # Query validation
+    if not query or len(query.strip()) < 2:
+        return "❌ Search query too short"
+    
+    if len(query) > 300:
+        return "❌ Search query too long (max 300 characters)"
+    
     try:
         st.write(f"🔍 Searching Serper API for: '{query}'")
 
@@ -161,8 +239,13 @@ def serper_search(query: str, max_results: int = 5, api_key: str = None) -> str:
         st.error(f"❌ {error_msg}")
         return f"❌ {error_msg}"
 
+@lru_cache(maxsize=100)
+def cached_search(query: str, max_results: int, api_key: str) -> str:
+    """Cache search results to avoid duplicate API calls"""
+    return safe_serper_search(query, max_results, api_key)
+
 # =====================================================================
-# 🧠 GROQ LLM INTEGRATION
+# 🧠 ENHANCED GROQ LLM INTEGRATION WITH RATE LIMITING
 # =====================================================================
 
 class GroqLLM:
@@ -211,60 +294,153 @@ class GroqLLM:
             st.error(f"❌ Unexpected error: {str(e)}")
             return None
 
-# =====================================================================
-# 🎯 RESEARCH WORKFLOW
-# =====================================================================
+class RateLimitedGroqLLM:
+    """Enhanced Groq LLM with rate limiting"""
+    
+    def __init__(self, api_key, model, temperature=0.7, requests_per_minute=30):
+        self.llm = GroqLLM(api_key, model, temperature)
+        self.requests_per_minute = requests_per_minute
+        self.last_call_time = 0
+        self.min_interval = 60.0 / requests_per_minute
 
-def execute_research_workflow(query, groq_llm, max_results, serper_key):
-    """Execute the complete research workflow using only Serper API"""
-
-    # Step 1: Web search
-    with st.status("🔍 Searching the web with Serper API...", expanded=True) as status:
-        search_results = serper_search(query, max_results, serper_key)
-        if search_results.startswith("❌"):
-            st.error("Search failed. Please check your Serper API key and try again.")
-            return None
-        status.update(label="✅ Web search completed", state="complete")
-
-    # Step 2: Generate research report
-    with st.status("📊 Analyzing search results and generating report...", expanded=True) as status:
-        research_prompt = f"""
-        Analyze the following web search results and create a comprehensive research report about: "{query}"
+    def call(self, prompt, system_message=None):
+        # Rate limiting
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_call_time
         
-        SEARCH RESULTS:
-        {search_results}
-        Current Date: {datetime.now().strftime('%Y-%m-%d')}
-        Please create a well-structured research report...
-        """
-        system_msg = "You are a professional research analyst..."
-        research_report = groq_llm.call(research_prompt, system_msg)
-        status.update(label="✅ Research report completed", state="complete")
+        if time_since_last_call < self.min_interval:
+            sleep_time = self.min_interval - time_since_last_call
+            with st.spinner(f"Rate limiting... waiting {sleep_time:.1f}s"):
+                time.sleep(sleep_time)
+        
+        self.last_call_time = time.time()
+        return self.llm.call(prompt, system_message)
 
-    if not research_report:
+# =====================================================================
+# 📥 ENHANCED DOWNLOAD FUNCTIONS
+# =====================================================================
+
+def create_enhanced_downloads(linkedin_post, research_report, query):
+    """Create multiple download formats with better formatting"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_filename = f"{query.replace(' ', '_')}_{timestamp}"
+    
+    # Enhanced TXT version
+    txt_content = f"""
+LINKEDIN POST
+{'='*50}
+{linkedin_post}
+
+{'='*50}
+RESEARCH REPORT
+{'='*50}
+{research_report}
+
+Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+    """
+    txt_data = BytesIO(txt_content.encode('utf-8'))
+    
+    # Enhanced DOCX with better formatting
+    doc = Document()
+    
+    # LinkedIn Post section
+    doc.add_heading('LinkedIn Post', level=1)
+    for paragraph in linkedin_post.split('\n'):
+        if paragraph.strip():
+            doc.add_paragraph(paragraph)
+    
+    doc.add_page_break()
+    
+    # Research Report section
+    doc.add_heading('Research Report', level=1)
+    for paragraph in research_report.split('\n'):
+        if paragraph.strip():
+            doc.add_paragraph(paragraph)
+    
+    # Add metadata
+    doc.add_page_break()
+    doc.add_heading('Document Information', level=2)
+    doc.add_paragraph(f"Query: {query}")
+    doc.add_paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    docx_stream = BytesIO()
+    doc.save(docx_stream)
+    docx_stream.seek(0)
+    
+    return {
+        'txt': (txt_data, f"{base_filename}.txt"),
+        'docx': (docx_stream, f"{base_filename}.docx")
+    }
+
+# =====================================================================
+# 🎯 ENHANCED RESEARCH WORKFLOW WITH PROGRESS TRACKING
+# =====================================================================
+
+def execute_research_workflow_with_progress(query, groq_llm, max_results, serper_key, post_tone, audience, include_stats, add_cta):
+    """Enhanced workflow with progress tracking and customization"""
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # Step 1: Web search
+    status_text.text("🔍 Searching the web...")
+    search_results = cached_search(query, max_results, serper_key)
+    progress_bar.progress(25)
+    
+    if search_results.startswith("❌"):
+        st.error("Search failed. Please check your query and API key.")
         return None
 
-    # Step 3: LinkedIn Post
-    with st.status("💬 Creating LinkedIn post...", expanded=True) as status:
-        linkedin_post_prompt = f"""
-        Based on the following research report, create a high-quality LinkedIn post that summarizes and humanizes the key findings.
+    # Step 2: Research report
+    status_text.text("📊 Analyzing results and generating research report...")
+    
+    research_prompt = f"""
+    Analyze these search results and create a comprehensive research report about: "{query}"
+    
+    SEARCH RESULTS:
+    {search_results}
+    
+    Current Date: {datetime.now().strftime('%Y-%m-%d')}
+    
+    Create a well-structured research report with:
+    1. EXECUTIVE SUMMARY: Brief overview of key findings
+    2. KEY FINDINGS: Main insights and discoveries
+    3. DATA & STATISTICS: {"Include relevant data points and statistics" if include_stats else "Focus on qualitative insights"}
+    4. IMPLICATIONS: What these findings mean in practice
+    5. RECOMMENDATIONS: Actionable suggestions
+    
+    Target Audience: {', '.join(audience)}
+    Tone: {post_tone.lower()}
+    """
+    
+    research_report = groq_llm.call(research_prompt, "You are a professional research analyst.")
+    progress_bar.progress(60)
 
-        RESEARCH REPORT:
-        {research_report}
+    if not research_report:
+        st.error("❌ Failed to generate research report")
+        return None
 
-        Write a professional, engaging LinkedIn post that:
-        - Has a catchy headline with an emoji (🚀, 💡, 🌍, etc.)
-        - Begins with a strong hook that sparks curiosity
-        - Contains 3–6 short sections with emoji headers (e.g., 🌾 The New Farming Frontier)
-        - Clearly explains insights, data, and implications in conversational tone
-        - Feels authentic — not robotic or academic
-        - Ends with a reflective question or call to action
-        - Includes 5–8 relevant hashtags
-        - Optionally uses emojis for visual flow
-        - Length: 1000–1500 words
-        """
-        linkedin_post = groq_llm.call(linkedin_post_prompt, "You are a professional LinkedIn storyteller.")
-        status.update(label="✅ LinkedIn post created successfully", state="complete")
-
+    # Step 3: LinkedIn post
+    status_text.text("💬 Creating LinkedIn post...")
+    
+    enhanced_linkedin_prompt = f"""
+    {LINKEDIN_POST_PROMPT.format(research_content=research_report)}
+    
+    ADDITIONAL REQUIREMENTS:
+    - Tone: {post_tone}
+    - Target Audience: {', '.join(audience)}
+    - {"Include relevant statistics and data" if include_stats else "Focus on conceptual insights"}
+    - {"Add a clear call-to-action" if add_cta else "End with a thought-provoking question"}
+    - Make it engaging for {post_tone.lower()} professional audience
+    """
+    
+    linkedin_post = groq_llm.call(
+        enhanced_linkedin_prompt,
+        "You are a professional LinkedIn content creator with expertise in creating viral professional content."
+    )
+    progress_bar.progress(100)
+    status_text.text("✅ Research complete!")
+    
     return {
         "search_results": search_results,
         "research_report": research_report,
@@ -272,57 +448,125 @@ def execute_research_workflow(query, groq_llm, max_results, serper_key):
     }
 
 # =====================================================================
-# ⚙️ MAIN EXECUTION
+# ⚙️ MAIN EXECUTION WITH SESSION STATE
 # =====================================================================
+
+# Initialize session state
+if 'research_history' not in st.session_state:
+    st.session_state.research_history = []
+
+if 'last_results' not in st.session_state:
+    st.session_state.last_results = None
+
+def save_to_history(query, results):
+    """Save research results to session history"""
+    history_item = {
+        'timestamp': datetime.now().isoformat(),
+        'query': query,
+        'linkedin_post': results['linkedin_post'],
+        'research_report': results['research_report']
+    }
+    st.session_state.research_history.append(history_item)
+    st.session_state.last_results = results
 
 def main():
     """Main application logic."""
-
-    query = st.text_area("🔎 Enter your research topic:", height=100)
+    
+    query = st.text_area("🔎 Enter your research topic:", height=100, placeholder="e.g., The impact of AI on digital marketing in 2024...")
 
     final_groq_key = groq_api_key.strip() if groq_api_key else os.getenv("GROQ_API_KEY")
     final_serper_key = serper_api_key.strip() if serper_api_key else os.getenv("SERPER_API_KEY")
 
-    if not final_groq_key:
-        st.error("❌ No Groq API key provided.")
+    # Validate API keys
+    validation_errors = validate_api_keys(final_groq_key, final_serper_key)
+    if validation_errors:
+        for error in validation_errors:
+            st.error(error)
         return
-    if not final_serper_key:
-        st.error("❌ No Serper API key provided.")
-        return
 
-    groq_llm = GroqLLM(final_groq_key, model_options[selected_model], temperature)
+    # Initialize enhanced LLM with rate limiting
+    groq_llm = RateLimitedGroqLLM(final_groq_key, model_options[selected_model], temperature)
 
-    if st.button("🚀 Run Research", use_container_width=True, type="primary"):
-        if not query.strip():
-            st.warning("⚠️ Please enter a research topic.")
-        else:
-            result = execute_research_workflow(query, groq_llm, max_results, final_serper_key)
-            if result:
-                st.success("✅ Research complete!")
+    # Research execution
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🚀 Run Research", use_container_width=True, type="primary"):
+            if not query.strip():
+                st.warning("⚠️ Please enter a research topic.")
+            elif len(query.strip()) < 5:
+                st.warning("⚠️ Please enter a more detailed research topic (at least 5 characters).")
+            else:
+                result = execute_research_workflow_with_progress(
+                    query, 
+                    groq_llm, 
+                    max_results, 
+                    final_serper_key,
+                    post_tone,
+                    audience,
+                    include_statistics,
+                    add_call_to_action
+                )
+                if result:
+                    save_to_history(query, result)
+                    st.success("✅ Research complete!")
+                    st.session_state.last_results = result
 
-                with st.expander("📋 LinkedIn Post", expanded=True):
-                    st.markdown(result["linkedin_post"])
+    with col2:
+        if st.session_state.research_history:
+            if st.button("📚 View Research History", use_container_width=True):
+                st.session_state.show_history = True
 
-                    # --- Download Buttons (NEW) ---
-                    txt_data = BytesIO(result["linkedin_post"].encode('utf-8'))
-                    st.download_button("⬇️ Download as .TXT", txt_data,
-                                       file_name=f"{query.replace(' ', '_')}_LinkedIn_Post.txt",
-                                       mime="text/plain")
+    # Display results if available
+    if st.session_state.last_results:
+        result = st.session_state.last_results
+        
+        with st.expander("📋 LinkedIn Post", expanded=True):
+            st.markdown(result["linkedin_post"])
+            
+            # Enhanced download buttons
+            downloads = create_enhanced_downloads(
+                result["linkedin_post"], 
+                result["research_report"], 
+                query
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    "⬇️ Download as .TXT", 
+                    downloads['txt'][0],
+                    file_name=downloads['txt'][1],
+                    mime="text/plain",
+                    use_container_width=True
+                )
+            with col2:
+                st.download_button(
+                    "⬇️ Download as .DOCX", 
+                    downloads['docx'][0],
+                    file_name=downloads['docx'][1],
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
 
-                    doc = Document()
-                    doc.add_paragraph(result["linkedin_post"])
-                    docx_stream = BytesIO()
-                    doc.save(docx_stream)
-                    docx_stream.seek(0)
-                    st.download_button("⬇️ Download as .DOCX", docx_stream,
-                                       file_name=f"{query.replace(' ', '_')}_LinkedIn_Post.docx",
-                                       mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        with st.expander("📊 Full Research Report", expanded=False):
+            st.markdown(result["research_report"])
 
-                with st.expander("📊 Full Research Report", expanded=False):
-                    st.markdown(result["research_report"])
+        with st.expander("🔍 Raw Search Results", expanded=False):
+            st.markdown(result["search_results"])
 
-                with st.expander("🔍 Raw Search Results", expanded=False):
-                    st.markdown(result["search_results"])
+    # Research history view
+    if st.session_state.get('show_history', False) and st.session_state.research_history:
+        st.markdown("---")
+        st.subheader("📚 Research History")
+        
+        for i, item in enumerate(reversed(st.session_state.research_history[-5:]), 1):
+            with st.expander(f"#{i}: {item['query']} - {datetime.fromisoformat(item['timestamp']).strftime('%Y-%m-%d %H:%M')}"):
+                st.markdown("**LinkedIn Post:**")
+                st.markdown(item['linkedin_post'][:500] + "..." if len(item['linkedin_post']) > 500 else item['linkedin_post'])
+                
+                if st.button(f"Load this result", key=f"load_{i}"):
+                    st.session_state.last_results = item
+                    st.rerun()
 
 # =====================================================================
 # 🧾 FOOTER
