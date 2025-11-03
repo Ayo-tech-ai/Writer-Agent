@@ -257,33 +257,33 @@ def execute_research_workflow(query, groq_llm, max_results, serper_key):
         return None
     
     # Step 3: Create executive summary
-    with st.status("✍️ Creating executive summary...", expanded=True) as status:
-        summary_prompt = f"""
-        Based on the following research report, create a concise executive summary:
-        
+    with st.status("💬 Creating LinkedIn post...", expanded=True) as status:
+        linkedin_post_prompt = f"""
+        Based on the following research report, create a high-quality LinkedIn post that summarizes and humanizes the key findings.
+
         RESEARCH REPORT:
         {research_report}
-        
-        Create a 2-3 paragraph executive summary that:
-        - Highlights the most important findings
-        - Presents key insights clearly and concisely
-        - Includes actionable takeaways
-        - Is suitable for busy decision-makers
-        
-        Keep it professional, impactful, and easy to understand.
+
+        Write a professional, engaging LinkedIn post that:
+        - Has a catchy headline with a relevant emoji (e.g., 🚀, 🌾, 💡, 🔍).
+        - Opens with a strong hook that sparks curiosity or emotion.
+        - Organizes content into 3–6 short sections, each with a short bold title or emoji header (e.g., 🌾 The New Farming Frontier).
+        - Explains key insights, data, and implications clearly, in natural, conversational English.
+        - Feels informative but not academic — it should sound like something a human professional would share to educate or inspire their audience.
+        - Closes with a reflective or thought-provoking question that invites engagement (e.g., “What are your thoughts?” or “Have you seen this trend in your industry?”).
+        - Includes 5–8 relevant hashtags at the end.
+        - Optionally includes emojis throughout the text for readability and visual appeal.
+        - Length: 1,000–1,500 words maximum. Rich, insightful, but easy to read.
+
+        Format it naturally for LinkedIn (line breaks between sections, no Markdown or bullet points).
         """
-        
-        executive_summary = groq_llm.call(
-            summary_prompt,
-            "You are an expert business communicator. Create clear, concise executive summaries that highlight key insights and recommendations."
+
+        linkedin_post = groq_llm.call(
+            linkedin_post_prompt,
+            "You are a professional LinkedIn storyteller. Write educational, engaging, and insightful posts based on research findings. Your tone should be human, authentic, and thought-provoking — designed to inform and connect with professionals."
         )
-        status.update(label="✅ Executive summary completed", state="complete")
-    
-    return {
-        "research_report": research_report,
-        "executive_summary": executive_summary,
-        "search_results": search_results
-    }
+
+        status.update(label="✅ LinkedIn post created successfully", state="complete")
 
 # =====================================================================
 # ⚙️ MAIN EXECUTION
