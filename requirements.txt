@@ -1,4 +1,4 @@
 groq
 requests
 streamlit
-docx
+python-docx
