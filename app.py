@@ -256,7 +256,7 @@ def execute_research_workflow(query, groq_llm, max_results, serper_key):
     if not research_report:
         return None
     
-    # Step 3: Create executive summary
+    # Step 3: Linkedin Post
     with st.status("💬 Creating LinkedIn post...", expanded=True) as status:
         linkedin_post_prompt = f"""
         Based on the following research report, create a high-quality LinkedIn post that summarizes and humanizes the key findings.
@@ -340,8 +340,8 @@ def main():
                         st.success("✅ Research complete!")
                         
                         # Display results
-                        with st.expander("📋 Executive Summary", expanded=True):
-                            st.markdown(result["executive_summary"])
+                        with st.expander("📋 LinkedIn Post", expanded=True):
+                            st.markdown(result["linkedin_post"])
                         
                         with st.expander("📊 Full Research Report", expanded=False):
                             st.markdown(result["research_report"])
