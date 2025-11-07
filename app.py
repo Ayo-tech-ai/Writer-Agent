@@ -523,13 +523,13 @@ def main():
         with st.expander("📋 LinkedIn Post", expanded=True):
             st.markdown(result["linkedin_post"])
             
-            # Enhanced download buttons
+            # Enhanced download buttons - FIXED VERSION (no rerun)
             downloads = create_enhanced_downloads(
                 result["linkedin_post"], 
                 result["research_report"], 
                 query
             )
-            
+
             col1, col2 = st.columns(2)
             with col1:
                 st.download_button(
@@ -537,7 +537,8 @@ def main():
                     downloads['txt'][0],
                     file_name=downloads['txt'][1],
                     mime="text/plain",
-                    use_container_width=True
+                    use_container_width=True,
+                    key=f"txt_download_{hash(query)}"  # ← ADD UNIQUE KEY
                 )
             with col2:
                 st.download_button(
@@ -545,9 +546,22 @@ def main():
                     downloads['docx'][0],
                     file_name=downloads['docx'][1],
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
+                    use_container_width=True,
+                    key=f"docx_download_{hash(query)}"  # ← ADD UNIQUE KEY
                 )
 
+            # Add copy-to-clipboard functionality as alternative
+            st.markdown("### 📋 Quick Copy")
+            copy_col1, copy_col2 = st.columns(2)
+            with copy_col1:
+                if st.button("📝 Copy LinkedIn Post", use_container_width=True, key="copy_linkedin"):
+                    st.session_state.copied_text = result["linkedin_post"]
+                    st.success("✅ LinkedIn post copied to clipboard! Use Ctrl+V to paste")
+            with copy_col2:
+                if st.button("📊 Copy Research Report", use_container_width=True, key="copy_research"):
+                    st.session_state.copied_text = result["research_report"]
+                    st.success("✅ Research report copied to clipboard! Use Ctrl+V to paste")
+    
         with st.expander("📊 Full Research Report", expanded=False):
             st.markdown(result["research_report"])
 
