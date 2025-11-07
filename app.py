@@ -11,6 +11,7 @@ from io import BytesIO
 from docx import Document
 from functools import lru_cache
 import time
+from streamlit_copy import st_copy_button
 
 # =====================================================================
 # ⚙️ APP CONFIGURATION
@@ -45,19 +46,6 @@ st.markdown("""
         }
         .stProgress > div > div > div > div {
             background-color: #4CAF50;
-        }
-        .copy-button {
-            margin: 10px 0;
-            padding: 8px 16px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .copy-button:hover {
-            background: #45a049;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -399,62 +387,6 @@ def generate_whatsapp_hook(linkedin_post, groq_llm):
     return whatsapp_hook if whatsapp_hook else "WhatsApp hook generation failed"
 
 # =====================================================================
-# 📥 ENHANCED DOWNLOAD FUNCTIONS
-# =====================================================================
-
-def create_enhanced_downloads(linkedin_post, research_report, query):
-    """Create multiple download formats with better formatting"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_filename = f"{query.replace(' ', '_')}_{timestamp}"
-    
-    # Enhanced TXT version
-    txt_content = f"""
-LINKEDIN POST
-{'='*50}
-{linkedin_post}
-
-{'='*50}
-RESEARCH REPORT
-{'='*50}
-{research_report}
-
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-    """
-    txt_data = BytesIO(txt_content.encode('utf-8'))
-    
-    # Enhanced DOCX with better formatting
-    doc = Document()
-    
-    # LinkedIn Post section
-    doc.add_heading('LinkedIn Post', level=1)
-    for paragraph in linkedin_post.split('\n'):
-        if paragraph.strip():
-            doc.add_paragraph(paragraph)
-    
-    doc.add_page_break()
-    
-    # Research Report section
-    doc.add_heading('Research Report', level=1)
-    for paragraph in research_report.split('\n'):
-        if paragraph.strip():
-            doc.add_paragraph(paragraph)
-    
-    # Add metadata
-    doc.add_page_break()
-    doc.add_heading('Document Information', level=2)
-    doc.add_paragraph(f"Query: {query}")
-    doc.add_paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    docx_stream = BytesIO()
-    doc.save(docx_stream)
-    docx_stream.seek(0)
-    
-    return {
-        'txt': (txt_data, f"{base_filename}.txt"),
-        'docx': (docx_stream, f"{base_filename}.docx")
-    }
-
-# =====================================================================
 # 🎯 ENHANCED RESEARCH WORKFLOW WITH PROGRESS TRACKING
 # =====================================================================
 
@@ -548,9 +480,6 @@ if 'research_history' not in st.session_state:
 if 'last_results' not in st.session_state:
     st.session_state.last_results = None
 
-if 'copied_text' not in st.session_state:
-    st.session_state.copied_text = ""
-
 def save_to_history(query, results):
     """Save research results to session history"""
     history_item = {
@@ -620,13 +549,8 @@ def main():
             st.subheader("💼 LinkedIn Post")
             st.markdown(result["linkedin_post"])
             
-            # JavaScript copy button for LinkedIn Post
-            st.markdown(f"""
-            <button onclick="navigator.clipboard.writeText(`{result["linkedin_post"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy LinkedIn Post', 2000);" 
-                    class="copy-button">
-                📋 Copy LinkedIn Post
-            </button>
-            """, unsafe_allow_html=True)
+            # Copy button for LinkedIn Post
+            st_copy_button(result["linkedin_post"], "📋 Copy LinkedIn Post")
             
             # Text area for easy selection
             st.text_area(
@@ -641,13 +565,8 @@ def main():
             st.subheader("📱 Facebook Post")
             st.markdown(result["facebook_post"])
             
-            # JavaScript copy button for Facebook Post
-            st.markdown(f"""
-            <button onclick="navigator.clipboard.writeText(`{result["facebook_post"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy Facebook Post', 2000);" 
-                    class="copy-button">
-                📋 Copy Facebook Post
-            </button>
-            """, unsafe_allow_html=True)
+            # Copy button for Facebook Post
+            st_copy_button(result["facebook_post"], "📋 Copy Facebook Post")
             
             # Text area for easy selection
             st.text_area(
@@ -662,13 +581,8 @@ def main():
             st.subheader("💬 WhatsApp Hook")
             st.markdown(result["whatsapp_hook"])
             
-            # JavaScript copy button for WhatsApp Hook
-            st.markdown(f"""
-            <button onclick="navigator.clipboard.writeText(`{result["whatsapp_hook"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy WhatsApp Hook', 2000);" 
-                    class="copy-button">
-                📋 Copy WhatsApp Hook
-            </button>
-            """, unsafe_allow_html=True)
+            # Copy button for WhatsApp Hook
+            st_copy_button(result["whatsapp_hook"], "📋 Copy WhatsApp Hook")
             
             # Text area for easy selection
             st.text_area(
@@ -685,13 +599,8 @@ def main():
                 urls_text = "\n".join(result["search_urls"])
                 st.markdown(f"**Found {len(result['search_urls'])} URLs:**")
                 
-                # JavaScript copy button for URLs
-                st.markdown(f"""
-                <button onclick="navigator.clipboard.writeText(`{urls_text.replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy All URLs', 2000);" 
-                        class="copy-button">
-                    📋 Copy All URLs
-                </button>
-                """, unsafe_allow_html=True)
+                # Copy button for all URLs
+                st_copy_button(urls_text, "📋 Copy All URLs")
                 
                 # Text area for URLs
                 st.text_area(
@@ -709,26 +618,14 @@ def main():
                     with col1:
                         st.markdown(f"`{i}. {url}`")
                     with col2:
-                        st.markdown(f"""
-                        <button onclick="navigator.clipboard.writeText('{url}'); this.innerHTML='✅'; setTimeout(() => this.innerHTML='📋', 2000);" 
-                                style="padding: 4px 8px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer;">
-                            📋
-                        </button>
-                        """, unsafe_allow_html=True)
-            else:
-                st.warning("No URLs found in the search results.")
+                        st_copy_button(url, "📋")
 
         with tab5:
             st.subheader("📊 Research Report")
             st.markdown(result["research_report"])
             
-            # JavaScript copy button for Research Report
-            st.markdown(f"""
-            <button onclick="navigator.clipboard.writeText(`{result["research_report"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy Research Report', 2000);" 
-                    class="copy-button">
-                📋 Copy Research Report
-            </button>
-            """, unsafe_allow_html=True)
+            # Copy button for Research Report
+            st_copy_button(result["research_report"], "📋 Copy Research Report")
             
             # Text area for easy selection
             st.text_area(
