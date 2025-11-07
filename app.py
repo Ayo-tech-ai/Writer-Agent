@@ -526,47 +526,30 @@ def main():
         with st.expander("📋 LinkedIn Post", expanded=True):
             st.markdown(result["linkedin_post"])
             
-            # Enhanced download buttons - FIXED VERSION (no rerun)
-            downloads = create_enhanced_downloads(
-                result["linkedin_post"], 
-                result["research_report"], 
-                query
+            # Easy copy functionality
+            st.markdown("### 📋 Copy LinkedIn Post")
+            st.text_area(
+                "LinkedIn Post Content", 
+                value=result["linkedin_post"],
+                height=200,
+                key="linkedin_post_area",
+                label_visibility="collapsed"
             )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    "⬇️ Download as .TXT", 
-                    downloads['txt'][0],
-                    file_name=downloads['txt'][1],
-                    mime="text/plain",
-                    use_container_width=True,
-                    key=f"txt_download_{hash(query)}"  # ADD UNIQUE KEY
-                )
-            with col2:
-                st.download_button(
-                    "⬇️ Download as .DOCX", 
-                    downloads['docx'][0],
-                    file_name=downloads['docx'][1],
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    key=f"docx_download_{hash(query)}"  # ADD UNIQUE KEY
-                )
-
-            # Add copy-to-clipboard functionality as alternative
-            st.markdown("### 📋 Quick Copy")
-            copy_col1, copy_col2 = st.columns(2)
-            with copy_col1:
-                if st.button("📝 Copy LinkedIn Post", use_container_width=True, key="copy_linkedin"):
-                    st.session_state.copied_text = result["linkedin_post"]
-                    st.success("✅ LinkedIn post copied to clipboard! Use Ctrl+V to paste")
-            with copy_col2:
-                if st.button("📊 Copy Research Report", use_container_width=True, key="copy_research"):
-                    st.session_state.copied_text = result["research_report"]
-                    st.success("✅ Research report copied to clipboard! Use Ctrl+V to paste")
+            st.caption("📱 Select the text above and copy (Ctrl+C / Cmd+C)")
 
         with st.expander("📊 Full Research Report", expanded=False):
             st.markdown(result["research_report"])
+            
+            # Easy copy functionality for research report
+            st.markdown("### 📋 Copy Research Report")
+            st.text_area(
+                "Research Report Content", 
+                value=result["research_report"],
+                height=200,
+                key="research_report_area", 
+                label_visibility="collapsed"
+            )
+            st.caption("📱 Select the text above and copy (Ctrl+C / Cmd+C)")
 
         with st.expander("🔍 Raw Search Results", expanded=False):
             st.markdown(result["search_results"])
