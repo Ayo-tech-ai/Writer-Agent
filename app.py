@@ -46,6 +46,19 @@ st.markdown("""
         .stProgress > div > div > div > div {
             background-color: #4CAF50;
         }
+        .copy-button {
+            margin: 10px 0;
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .copy-button:hover {
+            background: #45a049;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -170,17 +183,17 @@ with st.sidebar:
 # 🔍 ENHANCED SERPER API SEARCH IMPLEMENTATION
 # =====================================================================
 
-def safe_serper_search(query: str, max_results: int = 5, api_key: str = None) -> str:
+def safe_serper_search(query: str, max_results: int = 5, api_key: str = None):
     """Enhanced search with better error handling and validation"""
     if not api_key:
-        return "❌ Serper API key not provided"
+        return {"formatted_results": "❌ Serper API key not provided", "urls": []}
     
     # Query validation
     if not query or len(query.strip()) < 2:
-        return "❌ Search query too short"
+        return {"formatted_results": "❌ Search query too short", "urls": []}
     
     if len(query) > 300:
-        return "❌ Search query too long (max 300 characters)"
+        return {"formatted_results": "❌ Search query too long (max 300 characters)", "urls": []}
     
     try:
         st.write(f"🔍 Searching Serper API for: '{query}'")
@@ -203,6 +216,7 @@ def safe_serper_search(query: str, max_results: int = 5, api_key: str = None) ->
 
         data = response.json()
         results = []
+        url_list = []
 
         # Process organic results
         if 'organic' in data and data['organic']:
@@ -211,6 +225,7 @@ def safe_serper_search(query: str, max_results: int = 5, api_key: str = None) ->
                 link = result.get('link', 'No URL')
                 snippet = result.get('snippet', 'No description')
                 results.append(f"### 📄 Result {i}: {title}\n**URL:** {link}\n**Summary:** {snippet}\n")
+                url_list.append(link)
                 st.write(f"✅ Found: {title[:80]}...")
 
         # Also check for news results if organic results are limited
@@ -221,26 +236,39 @@ def safe_serper_search(query: str, max_results: int = 5, api_key: str = None) ->
                 link = result.get('link', 'No URL')
                 snippet = result.get('snippet', 'No description')
                 results.append(f"### 📰 News {i}: {title}\n**URL:** {link}\n**Summary:** {snippet}\n")
+                url_list.append(link)
                 st.write(f"✅ Found news: {title[:80]}...")
 
         if results:
             st.success(f"✅ Serper API found {len(results)} high-quality results")
-            return "\n\n".join(results)
+            return {
+                "formatted_results": "\n\n".join(results),
+                "urls": url_list
+            }
         else:
             st.warning("⚠️ No search results found via Serper API")
-            return "❌ No search results found"
+            return {
+                "formatted_results": "❌ No search results found",
+                "urls": []
+            }
 
     except requests.exceptions.RequestException as e:
         error_msg = f"Serper API request failed: {str(e)}"
         st.error(f"❌ {error_msg}")
-        return f"❌ {error_msg}"
+        return {
+            "formatted_results": f"❌ {error_msg}",
+            "urls": []
+        }
     except Exception as e:
         error_msg = f"Unexpected error with Serper API: {str(e)}"
         st.error(f"❌ {error_msg}")
-        return f"❌ {error_msg}"
+        return {
+            "formatted_results": f"❌ {error_msg}",
+            "urls": []
+        }
 
 @lru_cache(maxsize=100)
-def cached_search(query: str, max_results: int, api_key: str) -> str:
+def cached_search(query: str, max_results: int, api_key: str):
     """Cache search results to avoid duplicate API calls"""
     return safe_serper_search(query, max_results, api_key)
 
@@ -317,6 +345,60 @@ class RateLimitedGroqLLM:
         return self.llm.call(prompt, system_message)
 
 # =====================================================================
+# 📱 FACEBOOK & WHATSAPP POST GENERATION
+# =====================================================================
+
+def generate_facebook_post(linkedin_post, groq_llm):
+    """Generate Facebook version from LinkedIn post"""
+    facebook_prompt = f"""
+    Transform this LinkedIn post into an engaging Facebook post:
+    
+    KEY REQUIREMENTS:
+    - SHORTER: 200-400 characters max
+    - CONVERSATIONAL & FRIENDLY tone
+    - Use emojis naturally
+    - Keep the core message but make it more personal
+    - End with a question to encourage engagement
+    - Include 3-5 relevant hashtags
+    
+    LINKEDIN POST:
+    {linkedin_post}
+    
+    Return ONLY the Facebook post text, nothing else.
+    """
+    
+    facebook_post = groq_llm.call(
+        facebook_prompt,
+        "You are a social media expert who specializes in adapting professional content for Facebook's friendly, conversational audience."
+    )
+    
+    return facebook_post if facebook_post else "Facebook post generation failed"
+
+def generate_whatsapp_hook(linkedin_post, groq_llm):
+    """Generate ultra-short WhatsApp teaser"""
+    whatsapp_prompt = f"""
+    Create a SUPER SHORT WhatsApp teaser from this LinkedIn post:
+    
+    KEY REQUIREMENTS:
+    - 1-3 lines MAX (very concise)
+    - Intriguing hook that makes people want to read more
+    - Casual, conversational tone
+    - End with: 🔗 Read full post: [LinkedIn URL]
+    
+    LINKEDIN POST:
+    {linkedin_post}
+    
+    Return ONLY the WhatsApp message text, nothing else.
+    """
+    
+    whatsapp_hook = groq_llm.call(
+        whatsapp_prompt,
+        "You are a messaging expert who creates compelling, ultra-short teasers that drive clicks."
+    )
+    
+    return whatsapp_hook if whatsapp_hook else "WhatsApp hook generation failed"
+
+# =====================================================================
 # 📥 ENHANCED DOWNLOAD FUNCTIONS
 # =====================================================================
 
@@ -384,10 +466,10 @@ def execute_research_workflow_with_progress(query, groq_llm, max_results, serper
     
     # Step 1: Web search
     status_text.text("🔍 Searching the web...")
-    search_results = cached_search(query, max_results, serper_key)
+    search_data = cached_search(query, max_results, serper_key)
     progress_bar.progress(25)
     
-    if search_results.startswith("❌"):
+    if search_data["formatted_results"].startswith("❌"):
         st.error("Search failed. Please check your query and API key.")
         return None
 
@@ -398,7 +480,7 @@ def execute_research_workflow_with_progress(query, groq_llm, max_results, serper
     Analyze these search results and create a comprehensive research report about: "{query}"
     
     SEARCH RESULTS:
-    {search_results}
+    {search_data["formatted_results"]}
     
     Current Date: {datetime.now().strftime('%Y-%m-%d')}
     
@@ -438,13 +520,21 @@ def execute_research_workflow_with_progress(query, groq_llm, max_results, serper
         enhanced_linkedin_prompt,
         "You are a professional LinkedIn content creator with expertise in creating viral professional content. Your post must be of length 1,200 to 1,500 words"
     )
+    
+    # Generate Facebook and WhatsApp versions
+    facebook_post = generate_facebook_post(linkedin_post, groq_llm)
+    whatsapp_hook = generate_whatsapp_hook(linkedin_post, groq_llm)
+    
     progress_bar.progress(100)
     status_text.text("✅ Research complete!")
     
     return {
-        "search_results": search_results,
+        "search_results": search_data["formatted_results"],
+        "search_urls": search_data["urls"],
         "research_report": research_report,
-        "linkedin_post": linkedin_post
+        "linkedin_post": linkedin_post,
+        "facebook_post": facebook_post,
+        "whatsapp_hook": whatsapp_hook
     }
 
 # =====================================================================
@@ -523,36 +613,131 @@ def main():
     if st.session_state.last_results:
         result = st.session_state.last_results
         
-        with st.expander("📋 LinkedIn Post", expanded=True):
+        # Create tabs for different content types
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["💼 LinkedIn", "📱 Facebook", "💬 WhatsApp", "🔍 URLs", "📊 Research"])
+        
+        with tab1:
+            st.subheader("💼 LinkedIn Post")
             st.markdown(result["linkedin_post"])
             
-            # Easy copy functionality
-            st.markdown("### 📋 Copy LinkedIn Post")
+            # JavaScript copy button for LinkedIn Post
+            st.markdown(f"""
+            <button onclick="navigator.clipboard.writeText(`{result["linkedin_post"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy LinkedIn Post', 2000);" 
+                    class="copy-button">
+                📋 Copy LinkedIn Post
+            </button>
+            """, unsafe_allow_html=True)
+            
+            # Text area for easy selection
             st.text_area(
                 "LinkedIn Post Content", 
                 value=result["linkedin_post"],
-                height=200,
+                height=300,
                 key="linkedin_post_area",
                 label_visibility="collapsed"
             )
-            st.caption("📱 Select the text above and copy (Ctrl+C / Cmd+C)")
 
-        with st.expander("📊 Full Research Report", expanded=False):
+        with tab2:
+            st.subheader("📱 Facebook Post")
+            st.markdown(result["facebook_post"])
+            
+            # JavaScript copy button for Facebook Post
+            st.markdown(f"""
+            <button onclick="navigator.clipboard.writeText(`{result["facebook_post"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy Facebook Post', 2000);" 
+                    class="copy-button">
+                📋 Copy Facebook Post
+            </button>
+            """, unsafe_allow_html=True)
+            
+            # Text area for easy selection
+            st.text_area(
+                "Facebook Post Content", 
+                value=result["facebook_post"],
+                height=200,
+                key="facebook_post_area",
+                label_visibility="collapsed"
+            )
+
+        with tab3:
+            st.subheader("💬 WhatsApp Hook")
+            st.markdown(result["whatsapp_hook"])
+            
+            # JavaScript copy button for WhatsApp Hook
+            st.markdown(f"""
+            <button onclick="navigator.clipboard.writeText(`{result["whatsapp_hook"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy WhatsApp Hook', 2000);" 
+                    class="copy-button">
+                📋 Copy WhatsApp Hook
+            </button>
+            """, unsafe_allow_html=True)
+            
+            # Text area for easy selection
+            st.text_area(
+                "WhatsApp Hook Content", 
+                value=result["whatsapp_hook"],
+                height=150,
+                key="whatsapp_hook_area",
+                label_visibility="collapsed"
+            )
+
+        with tab4:
+            st.subheader("🔍 Research URLs")
+            if result["search_urls"]:
+                urls_text = "\n".join(result["search_urls"])
+                st.markdown(f"**Found {len(result['search_urls'])} URLs:**")
+                
+                # JavaScript copy button for URLs
+                st.markdown(f"""
+                <button onclick="navigator.clipboard.writeText(`{urls_text.replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy All URLs', 2000);" 
+                        class="copy-button">
+                    📋 Copy All URLs
+                </button>
+                """, unsafe_allow_html=True)
+                
+                # Text area for URLs
+                st.text_area(
+                    "Research URLs", 
+                    value=urls_text,
+                    height=200,
+                    key="urls_area",
+                    label_visibility="collapsed"
+                )
+                
+                # Individual URL copy buttons
+                st.markdown("**Individual URLs:**")
+                for i, url in enumerate(result["search_urls"], 1):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.markdown(f"`{i}. {url}`")
+                    with col2:
+                        st.markdown(f"""
+                        <button onclick="navigator.clipboard.writeText('{url}'); this.innerHTML='✅'; setTimeout(() => this.innerHTML='📋', 2000);" 
+                                style="padding: 4px 8px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                            📋
+                        </button>
+                        """, unsafe_allow_html=True)
+            else:
+                st.warning("No URLs found in the search results.")
+
+        with tab5:
+            st.subheader("📊 Research Report")
             st.markdown(result["research_report"])
             
-            # Easy copy functionality for research report
-            st.markdown("### 📋 Copy Research Report")
+            # JavaScript copy button for Research Report
+            st.markdown(f"""
+            <button onclick="navigator.clipboard.writeText(`{result["research_report"].replace('`', '´')}`); this.innerHTML='✅ Copied!'; setTimeout(() => this.innerHTML='📋 Copy Research Report', 2000);" 
+                    class="copy-button">
+                📋 Copy Research Report
+            </button>
+            """, unsafe_allow_html=True)
+            
+            # Text area for easy selection
             st.text_area(
                 "Research Report Content", 
                 value=result["research_report"],
-                height=200,
+                height=400,
                 key="research_report_area", 
                 label_visibility="collapsed"
             )
-            st.caption("📱 Select the text above and copy (Ctrl+C / Cmd+C)")
-
-        with st.expander("🔍 Raw Search Results", expanded=False):
-            st.markdown(result["search_results"])
 
     # Research history view
     if st.session_state.get('show_history', False) and st.session_state.research_history:
