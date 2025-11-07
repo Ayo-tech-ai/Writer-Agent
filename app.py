@@ -7,11 +7,8 @@ import streamlit as st
 import requests
 import json
 from datetime import datetime
-from io import BytesIO
-from docx import Document
 from functools import lru_cache
 import time
-from streamlit_copy import st_copy_button
 
 # =====================================================================
 # ⚙️ APP CONFIGURATION
@@ -333,21 +330,24 @@ class RateLimitedGroqLLM:
         return self.llm.call(prompt, system_message)
 
 # =====================================================================
-# 📱 FACEBOOK & WHATSAPP POST GENERATION
+# 📱 ENHANCED FACEBOOK & WHATSAPP POST GENERATION
 # =====================================================================
 
 def generate_facebook_post(linkedin_post, groq_llm):
-    """Generate Facebook version from LinkedIn post"""
+    """Generate comprehensive Facebook version from LinkedIn post"""
     facebook_prompt = f"""
-    Transform this LinkedIn post into an engaging Facebook post:
+    Transform this LinkedIn post into a comprehensive Facebook post that captures the essence but is optimized for Facebook's audience.
     
     KEY REQUIREMENTS:
-    - SHORTER: 200-400 characters max
-    - CONVERSATIONAL & FRIENDLY tone
-    - Use emojis naturally
-    - Keep the core message but make it more personal
-    - End with a question to encourage engagement
-    - Include 3-5 relevant hashtags
+    - LENGTH: 400-600 characters (substantial but not too long)
+    - TONE: Conversational, friendly, and engaging
+    - STRUCTURE: Maintain the key insights and value from the LinkedIn post
+    - CONTENT: Include the main points but make it more personal and relatable
+    - FORMATTING: Use emojis naturally and include line breaks for readability
+    - ENGAGEMENT: End with a question to encourage comments and discussion
+    - HASHTAGS: Include 4-6 relevant hashtags
+    
+    IMPORTANT: Don't just create a short catchy version - create a substantial post that actually communicates the key insights from the LinkedIn post in a Facebook-friendly way.
     
     LINKEDIN POST:
     {linkedin_post}
@@ -357,7 +357,7 @@ def generate_facebook_post(linkedin_post, groq_llm):
     
     facebook_post = groq_llm.call(
         facebook_prompt,
-        "You are a social media expert who specializes in adapting professional content for Facebook's friendly, conversational audience."
+        "You are a social media expert who specializes in adapting professional content for Facebook's friendly, conversational audience while maintaining substance and value."
     )
     
     return facebook_post if facebook_post else "Facebook post generation failed"
@@ -547,44 +547,29 @@ def main():
         
         with tab1:
             st.subheader("💼 LinkedIn Post")
-            st.markdown(result["linkedin_post"])
-            
-            # Copy button for LinkedIn Post
-            st_copy_button(result["linkedin_post"], "📋 Copy LinkedIn Post")
-            
-            # Text area for easy selection
+            st.info("📝 Select and copy the text below manually")
             st.text_area(
                 "LinkedIn Post Content", 
                 value=result["linkedin_post"],
-                height=300,
+                height=400,
                 key="linkedin_post_area",
                 label_visibility="collapsed"
             )
 
         with tab2:
             st.subheader("📱 Facebook Post")
-            st.markdown(result["facebook_post"])
-            
-            # Copy button for Facebook Post
-            st_copy_button(result["facebook_post"], "📋 Copy Facebook Post")
-            
-            # Text area for easy selection
+            st.info("📝 Select and copy the text below manually")
             st.text_area(
                 "Facebook Post Content", 
                 value=result["facebook_post"],
-                height=200,
+                height=300,
                 key="facebook_post_area",
                 label_visibility="collapsed"
             )
 
         with tab3:
             st.subheader("💬 WhatsApp Hook")
-            st.markdown(result["whatsapp_hook"])
-            
-            # Copy button for WhatsApp Hook
-            st_copy_button(result["whatsapp_hook"], "📋 Copy WhatsApp Hook")
-            
-            # Text area for easy selection
+            st.info("📝 Select and copy the text below manually")
             st.text_area(
                 "WhatsApp Hook Content", 
                 value=result["whatsapp_hook"],
@@ -598,11 +583,7 @@ def main():
             if result["search_urls"]:
                 urls_text = "\n".join(result["search_urls"])
                 st.markdown(f"**Found {len(result['search_urls'])} URLs:**")
-                
-                # Copy button for all URLs
-                st_copy_button(urls_text, "📋 Copy All URLs")
-                
-                # Text area for URLs
+                st.info("📝 Select and copy the URLs below manually")
                 st.text_area(
                     "Research URLs", 
                     value=urls_text,
@@ -610,24 +591,12 @@ def main():
                     key="urls_area",
                     label_visibility="collapsed"
                 )
-                
-                # Individual URL copy buttons
-                st.markdown("**Individual URLs:**")
-                for i, url in enumerate(result["search_urls"], 1):
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.markdown(f"`{i}. {url}`")
-                    with col2:
-                        st_copy_button(url, "📋")
+            else:
+                st.warning("No URLs found in the search results.")
 
         with tab5:
             st.subheader("📊 Research Report")
-            st.markdown(result["research_report"])
-            
-            # Copy button for Research Report
-            st_copy_button(result["research_report"], "📋 Copy Research Report")
-            
-            # Text area for easy selection
+            st.info("📝 Select and copy the text below manually")
             st.text_area(
                 "Research Report Content", 
                 value=result["research_report"],
