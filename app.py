@@ -458,6 +458,9 @@ if 'research_history' not in st.session_state:
 if 'last_results' not in st.session_state:
     st.session_state.last_results = None
 
+if 'copied_text' not in st.session_state:
+    st.session_state.copied_text = ""
+
 def save_to_history(query, results):
     """Save research results to session history"""
     history_item = {
@@ -538,7 +541,7 @@ def main():
                     file_name=downloads['txt'][1],
                     mime="text/plain",
                     use_container_width=True,
-                    key=f"txt_download_{hash(query)}"  # ← ADD UNIQUE KEY
+                    key=f"txt_download_{hash(query)}"  # ADD UNIQUE KEY
                 )
             with col2:
                 st.download_button(
@@ -547,7 +550,7 @@ def main():
                     file_name=downloads['docx'][1],
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
-                    key=f"docx_download_{hash(query)}"  # ← ADD UNIQUE KEY
+                    key=f"docx_download_{hash(query)}"  # ADD UNIQUE KEY
                 )
 
             # Add copy-to-clipboard functionality as alternative
@@ -561,7 +564,7 @@ def main():
                 if st.button("📊 Copy Research Report", use_container_width=True, key="copy_research"):
                     st.session_state.copied_text = result["research_report"]
                     st.success("✅ Research report copied to clipboard! Use Ctrl+V to paste")
-    
+
         with st.expander("📊 Full Research Report", expanded=False):
             st.markdown(result["research_report"])
 
