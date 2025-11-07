@@ -17,7 +17,7 @@ import time
 # =====================================================================
 
 st.set_page_config(
-    page_title="LinkedIn Post Generator",
+    page_title="LinkedIn Article Generator",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -49,7 +49,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🌍 LinkedIn Post Generator")
+st.title("🌍 LinkedIn Article Generator")
 st.markdown(
     """
     🤖 Powered by Groq + Serper API  
@@ -77,6 +77,7 @@ Create a professional LinkedIn post based on this research. Follow these guideli
 - Data-driven but accessible
 - Engaging and shareable
 - Authentic voice
+- Humanize
 
 **FORMATTING:**
 - Use emojis sparingly for visual breaks
